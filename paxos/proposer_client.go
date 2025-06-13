@@ -10,7 +10,30 @@ func quorum(n int) int {
 	return n/2 + 1
 }
 
-func Write(id NodeId, s Server, value Value, rpcList []RPC) {
+func Touch(s Server, rpcList []RPC) {
+	logId := s.GetNextApplyId()
+	{
+		commited := false
+		var v Value = nil
+		for _, res := range broadcast[*GetRequest, *GetResponse](rpcList, &GetRequest{
+			LogId: logId,
+		}) {
+			if res.Promise.Proposal == COMMITED {
+				v = res.Promise.Value
+				commited = true
+				break
+			}
+		}
+		if commited {
+			s.Handle(&CommitRequest{
+				LogId: logId,
+				Value: v,
+			})
+		}
+	}
+}
+
+func Write(s Server, id NodeId, value Value, rpcList []RPC) {
 	n := len(rpcList)
 	proposal := ProposalNumber(id)
 	for {
@@ -33,7 +56,7 @@ func Write(id NodeId, s Server, value Value, rpcList []RPC) {
 					LogId: logId,
 					Value: v,
 				})
-				// logId += 1
+				// reset proposal
 				proposal = ProposalNumber(id)
 				continue
 			}
@@ -51,7 +74,7 @@ func Write(id NodeId, s Server, value Value, rpcList []RPC) {
 				}
 			}
 			if okCount < quorum(n) {
-				// next proposal
+				// update proposal
 				proposal = proposal + PROPOSAL_STEP
 				continue
 			}
@@ -70,7 +93,7 @@ func Write(id NodeId, s Server, value Value, rpcList []RPC) {
 				}
 			}
 			if okCount < quorum(n) {
-				// next proposal
+				// update proposal
 				proposal = proposal + PROPOSAL_STEP
 				continue
 			}
