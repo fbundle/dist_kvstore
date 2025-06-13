@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand/v2"
+	"paxos/kvstore"
 	"paxos/paxos"
 	"strings"
 	"sync"
@@ -16,7 +17,9 @@ func main() {
 	acceptorList := make([]paxos.Acceptor, n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i] = paxos.NewAcceptor()
+		acceptorList[i] = paxos.NewAcceptor(
+			kvstore.NewMemStore[paxos.LogId, paxos.Promise](),
+		)
 	}
 
 	// define rpc communication -

@@ -1,6 +1,7 @@
 package paxos
 
 import (
+	"paxos/kvstore"
 	"sync"
 )
 
@@ -11,10 +12,12 @@ type Acceptor interface {
 	Listen(from LogId, listener func(logId LogId, value Value)) (cancel func())
 }
 
-func NewAcceptor() Acceptor {
+func NewAcceptor(log kvstore.Store[LogId, Promise]) Acceptor {
 	return &acceptor{
-		mu:                 sync.Mutex{},
-		acceptor:           &simpleAcceptor{},
+		mu: sync.Mutex{},
+		acceptor: &simpleAcceptor{
+			log: log,
+		},
 		smallestUncommited: 0,
 		listenerCount:      0,
 		listenerMap:        make(map[uint64]func(logId LogId, value Value)),

@@ -39,5 +39,5 @@ type GetRequest struct {
 }
 
 type GetResponse struct {
-	Promise *Promise `json:"promise"`
+	Promise Promise `json:"promise"`
 }

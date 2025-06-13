@@ -1,5 +1,7 @@
 package paxos
 
+import "paxos/kvstore"
+
 type ProposalNumber uint64
 
 const (
@@ -17,53 +19,64 @@ type Promise struct {
 type LogId uint64
 
 type simpleAcceptor struct {
-	log []*Promise
+	log kvstore.Store[LogId, Promise]
 }
 
-func (a *simpleAcceptor) get(logId LogId) *Promise {
-	for len(a.log) <= int(logId) {
-		a.log = append(a.log, &Promise{
-			Proposal: 0,
-		})
-	}
-	return a.log[logId]
+func (a *simpleAcceptor) get(logId LogId) Promise {
+	var promise Promise
+	a.log.Update(logId, func(p Promise) Promise {
+		promise = p
+		return p
+	})
+	return promise
 }
 
 func (a *simpleAcceptor) commit(logId LogId, v Value) {
-	promise := a.get(logId)
-	promise.Proposal = COMMITED
-	promise.Value = v
+	a.log.Update(logId, func(_ Promise) Promise {
+		return Promise{
+			Proposal: COMMITED,
+			Value:    v,
+		}
+	})
 }
 
-func (a *simpleAcceptor) prepare(logId LogId, proposal ProposalNumber) (ProposalNumber, bool) {
-	promise := a.get(logId)
-
-	if promise.Proposal == COMMITED {
-		// reject if committed
-		return COMMITED, false
-	}
-
-	if proposal <= promise.Proposal {
-		// fulfill promise
-		return promise.Proposal, false
-	}
-	promise.Proposal = proposal
-	return promise.Proposal, true
+func (a *simpleAcceptor) prepare(logId LogId, proposal ProposalNumber) (proposalOut ProposalNumber, ok bool) {
+	a.log.Update(logId, func(p Promise) Promise {
+		if p.Proposal == COMMITED {
+			// reject if committed
+			proposalOut, ok = COMMITED, false
+			return p
+		}
+		if proposal <= p.Proposal {
+			// fulfill promise
+			proposalOut, ok = p.Proposal, false
+			return p
+		}
+		// make promise
+		p.Proposal = proposal
+		proposalOut, ok = proposal, true
+		return p
+	})
+	return
 }
 
-func (a *simpleAcceptor) accept(logId LogId, proposal ProposalNumber, value Value) (ProposalNumber, bool) {
-	promise := a.get(logId)
-
-	if promise.Proposal == COMMITED {
-		// reject if committed
-		return COMMITED, false
-	}
-
-	if proposal < promise.Proposal {
-		// fulfill promise
-		return promise.Proposal, false
-	}
-	promise.Proposal = proposal
-	promise.Value = value
-	return promise.Proposal, true
+func (a *simpleAcceptor) accept(logId LogId, proposal ProposalNumber, value Value) (proposalOut ProposalNumber, ok bool) {
+	a.log.Update(logId, func(p Promise) Promise {
+		if p.Proposal == COMMITED {
+			// reject if committed
+			proposalOut, ok = COMMITED, false
+			return p
+		}
+		if proposal < p.Proposal {
+			// fulfill promise
+			proposalOut, ok = p.Proposal, false
+			return p
+		}
+		// make promise
+		p.Proposal = proposal
+		p.Value = value
+		proposalOut, ok = proposal, true
+		return p
+	})
+	return
 }
