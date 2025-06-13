@@ -6,6 +6,13 @@ type Store[K comparable, V any] interface {
 	Update(k K, update func(V) V)
 }
 
+func NewMemStore[K comparable, V any]() Store[K, V] {
+	return &memStore[K, V]{
+		mu:    sync.Mutex{},
+		store: make(map[K]V),
+	}
+}
+
 func zero[T any]() T {
 	var v T
 	return v
@@ -24,11 +31,4 @@ func (m *memStore[K, V]) Update(k K, update func(V) V) {
 		v = zero[V]()
 	}
 	m.store[k] = update(v)
-}
-
-func NewMemStore[K comparable, V any]() Store[K, V] {
-	return &memStore[K, V]{
-		mu:    sync.Mutex{},
-		store: make(map[K]V),
-	}
 }
