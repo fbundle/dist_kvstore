@@ -6,6 +6,7 @@ import (
 )
 
 type Acceptor interface {
+	UpdateLocalCommit() Acceptor
 	Get(logId LogId) (val Value, ok bool)
 	Next() LogId
 	Handle(req Request) (res Response)
@@ -13,33 +14,53 @@ type Acceptor interface {
 }
 
 func NewAcceptor(log kvstore.Store[LogId, Promise]) Acceptor {
-	return &acceptor{
+	return (&acceptor{
 		mu: sync.Mutex{},
 		acceptor: &simpleAcceptor{
 			log: log,
 		},
-		smallestUncommited: 0,
-		listenerCount:      0,
-		listenerMap:        make(map[uint64]func(logId LogId, value Value)),
-	}
+		smallestUnapplied: 0,
+		listenerCount:     0,
+		listenerMap:       make(map[uint64]func(logId LogId, value Value)),
+	}).updateLocalCommitWithoutLock()
 }
 
 // acceptor - paxos acceptor must be persistent
 type acceptor struct {
-	mu                 sync.Mutex
-	acceptor           *simpleAcceptor
-	smallestUncommited LogId
-	listenerCount      uint64
-	listenerMap        map[uint64]func(logId LogId, value Value)
+	mu                sync.Mutex
+	acceptor          *simpleAcceptor
+	smallestUnapplied LogId
+	listenerCount     uint64
+	listenerMap       map[uint64]func(logId LogId, value Value)
+}
+
+func (a *acceptor) UpdateLocalCommit() Acceptor {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.updateLocalCommitWithoutLock()
+}
+
+func (a *acceptor) updateLocalCommitWithoutLock() *acceptor {
+	for {
+		promise := a.acceptor.get(a.smallestUnapplied)
+		if promise.Proposal != COMMITED {
+			break
+		}
+		for _, listener := range a.listenerMap {
+			listener(a.smallestUnapplied, promise.Value)
+		}
+		a.smallestUnapplied++
+	}
+	return a
 }
 
 func (a *acceptor) Listen(from LogId, listener func(logId LogId, value Value)) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.smallestUncommited < from {
+	if a.smallestUnapplied < from {
 		panic("subscribe from a future log_id")
 	}
-	for logId := from; logId < a.smallestUncommited; logId++ {
+	for logId := from; logId < a.smallestUnapplied; logId++ {
 		listener(logId, a.acceptor.get(logId).Value)
 	}
 	count := a.listenerCount
@@ -62,7 +83,7 @@ func (a *acceptor) Get(logId LogId) (Value, bool) {
 func (a *acceptor) Next() LogId {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.smallestUncommited
+	return a.smallestUnapplied
 }
 func (a *acceptor) Handle(r Request) Response {
 	a.mu.Lock()
@@ -82,16 +103,7 @@ func (a *acceptor) Handle(r Request) Response {
 		}
 	case *CommitRequest:
 		a.acceptor.commit(req.LogId, req.Value)
-		for {
-			promise := a.acceptor.get(a.smallestUncommited)
-			if promise.Proposal != COMMITED {
-				break
-			}
-			for _, listener := range a.listenerMap {
-				listener(a.smallestUncommited, promise.Value)
-			}
-			a.smallestUncommited++
-		}
+		a.updateLocalCommitWithoutLock()
 		return nil
 	case *GetRequest:
 		promise := a.acceptor.get(req.LogId)

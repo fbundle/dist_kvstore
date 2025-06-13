@@ -32,7 +32,7 @@ func broadcast[Req any, Res any](rpcList []RPC, req Req) []Res {
 // Update - check if there is an update
 func Update(a Acceptor, rpcList []RPC) Acceptor {
 	for {
-		logId := a.Next()
+		logId := a.UpdateLocalCommit().Next()
 		commited := false
 		var v Value = nil
 		for _, res := range broadcast[*GetRequest, *GetResponse](rpcList, &GetRequest{
