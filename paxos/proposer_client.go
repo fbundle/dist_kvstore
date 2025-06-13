@@ -1,97 +1,88 @@
 package paxos
 
-type ProposerId uint32
+type NodeId uint32
 
 const (
 	PROPOSAL_STEP ProposalNumber = 4294967296
 )
 
-type RPC func(Request) Response
-
 func quorum(n int) int {
 	return n/2 + 1
 }
 
-func Append(id ProposerId, logId LogId, value Value, rpcList []RPC) {
+func Write(id NodeId, s Server, value Value, rpcList []RPC) {
 	n := len(rpcList)
 	proposal := ProposalNumber(id)
-
-	broadcastCommit := func(logId LogId, value Value) {
-		for _, rpc := range rpcList {
-			rpc(&CommitRequest{
-				LogId: logId,
-				Value: value,
-			})
-		}
-	}
-
 	for {
+		logId := s.GetNextApplyId()
 		// get
-		getResponseList := make([]*GetResponse, 0)
-		for _, rpc := range rpcList {
-			res := rpc(&GetRequest{
+		{
+			commited := false
+			var v Value = nil
+			for _, res := range broadcast[*GetRequest, *GetResponse](rpcList, &GetRequest{
 				LogId: logId,
-			})
-			if res != nil {
-				getResponseList = append(getResponseList, res.(*GetResponse))
+			}) {
+				if res.Promise.Proposal == COMMITED {
+					v = res.Promise.Value
+					commited = true
+					break
+				}
 			}
-		}
-		for _, res := range getResponseList {
-			if res.Promise.Proposal == COMMITED {
-				broadcastCommit(logId, res.Promise.Value)
-				// next logId
-				logId = logId + 1
+			if commited {
+				s.Handle(&CommitRequest{
+					LogId: logId,
+					Value: v,
+				})
+				// logId += 1
 				proposal = ProposalNumber(id)
 				continue
 			}
 		}
 		// prepare
-		prepareResponseList := make([]*PrepareResponse, 0)
-		for _, rpc := range rpcList {
-			res := rpc(&PrepareRequest{
+		{
+			resList := broadcast[*PrepareRequest, *PrepareResponse](rpcList, &PrepareRequest{
 				LogId:    logId,
 				Proposal: proposal,
 			})
-			if res != nil {
-				prepareResponseList = append(prepareResponseList, res.(*PrepareResponse))
+			okCount := 0
+			for _, res := range resList {
+				if res.Ok {
+					okCount++
+				}
 			}
-		}
-		okCount := 0
-		for _, res := range prepareResponseList {
-			if res.Ok {
-				okCount++
+			if okCount < quorum(n) {
+				// next proposal
+				proposal = proposal + PROPOSAL_STEP
+				continue
 			}
-		}
-		if okCount < quorum(n) {
-			// next proposal
-			proposal = proposal + PROPOSAL_STEP
-			continue
 		}
 		// accept
-		acceptResponseList := make([]*AcceptResponse, 0)
-		for _, rpc := range rpcList {
-			res := rpc(&AcceptRequest{
+		{
+			resList := broadcast[*AcceptRequest, *AcceptResponse](rpcList, &AcceptRequest{
 				LogId:    logId,
 				Proposal: proposal,
 				Value:    value,
 			})
-			if res != nil {
-				acceptResponseList = append(acceptResponseList, res.(*AcceptResponse))
+			okCount := 0
+			for _, res := range resList {
+				if res.Ok {
+					okCount++
+				}
+			}
+			if okCount < quorum(n) {
+				// next proposal
+				proposal = proposal + PROPOSAL_STEP
+				continue
 			}
 		}
-		okCount = 0
-		for _, res := range acceptResponseList {
-			if res.Ok {
-				okCount++
-			}
+		// commitWithoutLock
+		{
+			// local commit
+			s.Handle(&CommitRequest{
+				LogId: logId,
+				Value: value,
+			})
 		}
-		if okCount < quorum(n) {
-			// next proposal
-			proposal = proposal + PROPOSAL_STEP
-			continue
-		}
-		// commit
-		broadcastCommit(logId, value)
 		break
 	}
 }

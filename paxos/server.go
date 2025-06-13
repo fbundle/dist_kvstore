@@ -1,10 +1,15 @@
 package paxos
 
+import (
+	"sync"
+)
+
 type Server interface {
+	GetNextApplyId() LogId
 	Handle(Request) Response
 }
 
-func NewServer(apply func(Value)) Server {
+func NewServer(apply func(LogId, Value)) Server {
 	return &server{
 		acceptor:    &acceptor{},
 		nextApplyId: 0,
@@ -13,12 +18,20 @@ func NewServer(apply func(Value)) Server {
 }
 
 type server struct {
+	mu          sync.Mutex
 	acceptor    *acceptor
 	nextApplyId LogId
-	apply       func(value Value)
+	apply       func(logId LogId, value Value)
 }
 
+func (s *server) GetNextApplyId() LogId {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.nextApplyId
+}
 func (s *server) Handle(req Request) Response {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	switch req := req.(type) {
 	case *PrepareRequest:
 		proposal, ok := s.acceptor.Prepare(req.LogId, req.Proposal)
@@ -37,7 +50,7 @@ func (s *server) Handle(req Request) Response {
 		for {
 			promise := s.acceptor.Get(s.nextApplyId)
 			if promise.Proposal == COMMITED {
-				s.apply(promise.Value)
+				s.apply(s.nextApplyId, promise.Value)
 				s.nextApplyId++
 				continue
 			}
