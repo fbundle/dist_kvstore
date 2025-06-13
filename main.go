@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"paxos/paxos"
 )
 
@@ -15,14 +16,23 @@ func main() {
 	}
 	paxos.Append(0, "hello", []paxos.RPC{
 		func(req paxos.Request) paxos.Response {
+			if rand.Float64() < 0.8 {
+				return nil
+			}
 			server := serverList[0]
 			return server.Handle(req)
 		},
 		func(req paxos.Request) paxos.Response {
+			if rand.Float64() < 0.8 {
+				return nil
+			}
 			server := serverList[1]
 			return server.Handle(req)
 		},
 		func(req paxos.Request) paxos.Response {
+			if rand.Float64() < 0.8 {
+				return nil
+			}
 			server := serverList[2]
 			return server.Handle(req)
 		},

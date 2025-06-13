@@ -18,15 +18,17 @@ func Append(id ProposerId, value Value, rpcList []RPC) {
 	proposal := ProposalNumber(id)
 	for {
 		// get
-		getResponseList := make([]*GetResponse, n)
-		for i, rpc := range rpcList {
+		getResponseList := make([]*GetResponse, 0)
+		for _, rpc := range rpcList {
 			res := rpc(&GetRequest{
 				LogId: logId,
-			}).(*GetResponse)
-			getResponseList[i] = res
+			})
+			if res != nil {
+				getResponseList = append(getResponseList, res.(*GetResponse))
+			}
 		}
 		for _, res := range getResponseList {
-			if res != nil && res.Promise.Proposal == COMMITED {
+			if res.Promise.Proposal == COMMITED {
 				// next logId
 				logId = logId + 1
 				proposal = ProposalNumber(id)
@@ -34,17 +36,19 @@ func Append(id ProposerId, value Value, rpcList []RPC) {
 			}
 		}
 		// prepare
-		prepareResponseList := make([]*PrepareResponse, n)
-		for i, rpc := range rpcList {
+		prepareResponseList := make([]*PrepareResponse, 0)
+		for _, rpc := range rpcList {
 			res := rpc(&PrepareRequest{
 				LogId:    logId,
 				Proposal: proposal,
-			}).(*PrepareResponse)
-			prepareResponseList[i] = res
+			})
+			if res != nil {
+				prepareResponseList = append(prepareResponseList, res.(*PrepareResponse))
+			}
 		}
 		okCount := 0
 		for _, res := range prepareResponseList {
-			if res != nil && res.Ok {
+			if res.Ok {
 				okCount++
 			}
 		}
@@ -54,18 +58,20 @@ func Append(id ProposerId, value Value, rpcList []RPC) {
 			continue
 		}
 		// accept
-		acceptResponseList := make([]*AcceptResponse, n)
-		for i, rpc := range rpcList {
+		acceptResponseList := make([]*AcceptResponse, 0)
+		for _, rpc := range rpcList {
 			res := rpc(&AcceptRequest{
 				LogId:    logId,
 				Proposal: proposal,
 				Value:    value,
-			}).(*AcceptResponse)
-			acceptResponseList[i] = res
+			})
+			if res != nil {
+				acceptResponseList = append(acceptResponseList, res.(*AcceptResponse))
+			}
 		}
 		okCount = 0
 		for _, res := range acceptResponseList {
-			if res != nil && res.Ok {
+			if res.Ok {
 				okCount++
 			}
 		}
