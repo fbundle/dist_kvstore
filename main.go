@@ -28,10 +28,15 @@ func main() {
 		}
 	}
 
+	dropRate := 0.95
+
 	rpcList := make([]paxos.RPC, n)
 	for i := 0; i < n; i++ {
 		i := i
 		rpcList[i] = func(req paxos.Request) paxos.Response {
+			if rand.Float64() < dropRate {
+				return nil
+			}
 			ch := make(chan paxos.Response, 1)
 			go func() {
 				ch <- sList[i].s.Handle(req)
@@ -62,7 +67,9 @@ func main() {
 	}
 	wg.Wait()
 
+	dropRate = 0.0
 	for i := 0; i < n; i++ {
+		paxos.Update(sList[i].s, rpcList)
 		fmt.Println(strings.Join(sList[i].m, "_"))
 	}
 
