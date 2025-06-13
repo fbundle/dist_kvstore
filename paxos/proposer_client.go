@@ -10,38 +10,42 @@ func quorum(n int) int {
 	return n/2 + 1
 }
 
-// Touch - check if there is an update
-func Touch(s Server, rpcList []RPC, logId LogId) bool {
-	commited := false
-	var v Value = nil
-	for _, res := range broadcast[*GetRequest, *GetResponse](rpcList, &GetRequest{
-		LogId: logId,
-	}) {
-		if res.Promise.Proposal == COMMITED {
-			v = res.Promise.Value
-			commited = true
+// Update - check if there is an update
+func Update(s Server, rpcList []RPC) {
+	for {
+		logId := s.Next()
+		commited := false
+		var v Value = nil
+		for _, res := range broadcast[*GetRequest, *GetResponse](rpcList, &GetRequest{
+			LogId: logId,
+		}) {
+			if res.Promise.Proposal == COMMITED {
+				v = res.Promise.Value
+				commited = true
+				break
+			}
+		}
+		if !commited {
 			break
 		}
-	}
-	if commited {
 		s.Handle(&CommitRequest{
 			LogId: logId,
 			Value: v,
 		})
 	}
-	return commited
 }
 
-func Write(s Server, id NodeId, value Value, rpcList []RPC) {
+// Write - write new value
+func Write(s Server, id NodeId, logId LogId, value Value, rpcList []RPC) bool {
+	resetProposal := func() ProposalNumber {
+		return ProposalNumber(id)
+	}
 	n := len(rpcList)
-	proposal := ProposalNumber(id)
+	proposal := resetProposal()
 	for {
-		logId := s.GetNextApplyId()
-		committed := Touch(s, rpcList, logId)
-		if committed {
-			// reset proposal
-			proposal = ProposalNumber(id)
-			continue
+		Update(s, rpcList)
+		if _, committed := s.Get(logId); committed {
+			return false
 		}
 		// prepare
 		{
@@ -80,14 +84,19 @@ func Write(s Server, id NodeId, value Value, rpcList []RPC) {
 				continue
 			}
 		}
-		// commitWithoutLock
+		// commit
 		{
 			// local commit
 			s.Handle(&CommitRequest{
 				LogId: logId,
 				Value: value,
 			})
+			// broadcast commit
+			broadcast[*CommitRequest, *CommitRequest](rpcList, &CommitRequest{
+				LogId: logId,
+				Value: value,
+			})
 		}
-		break
+		return true
 	}
 }

@@ -5,7 +5,8 @@ import (
 )
 
 type Server interface {
-	GetNextApplyId() LogId
+	Get(LogId) (Value, bool)
+	Next() LogId
 	Handle(Request) Response
 }
 
@@ -24,7 +25,14 @@ type server struct {
 	apply       func(logId LogId, value Value)
 }
 
-func (s *server) GetNextApplyId() LogId {
+func (s *server) Get(logId LogId) (Value, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	promise := s.acceptor.Get(logId)
+	return promise.Value, promise.Proposal == COMMITED
+}
+
+func (s *server) Next() LogId {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.nextApplyId

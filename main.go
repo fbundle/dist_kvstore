@@ -34,7 +34,14 @@ func main() {
 		j := j
 		s := fmt.Sprintf("hello_%dth_times", j)
 		nid := j % 3
-		paxos.Write(serverList[nid], paxos.NodeId(nid), s, rpc)
+		for {
+			server := serverList[nid]
+			logId := server.Next()
+			ok := paxos.Write(server, paxos.NodeId(nid), logId, s, rpc)
+			if ok {
+				break
+			}
+		}
 	}
 	time.Sleep(5 * time.Second)
 	return
