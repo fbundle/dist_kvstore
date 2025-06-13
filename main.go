@@ -29,8 +29,10 @@ func main() {
 		}
 	}
 
-	// define rpc communication
-	dropRate := 0.80 // drop 80% of requests and responses
+	// define rpc communication -
+	// drop 80% of requests and responses
+	// in total, 0.96% of requests don't go through
+	dropRate := 0.80
 	rpcList := make([]paxos.RPC, n)
 	for i := 0; i < n; i++ {
 		i := i
