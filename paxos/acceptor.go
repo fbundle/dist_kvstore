@@ -20,7 +20,7 @@ type acceptor struct {
 	log []*Promise
 }
 
-func (a *acceptor) Get(logId LogId) *Promise {
+func (a *acceptor) get(logId LogId) *Promise {
 	for len(a.log) <= int(logId) {
 		a.log = append(a.log, &Promise{
 			Proposal: 0,
@@ -29,14 +29,14 @@ func (a *acceptor) Get(logId LogId) *Promise {
 	return a.log[logId]
 }
 
-func (a *acceptor) Commit(logId LogId, v Value) {
-	promise := a.Get(logId)
+func (a *acceptor) commit(logId LogId, v Value) {
+	promise := a.get(logId)
 	promise.Proposal = COMMITED
 	promise.Value = v
 }
 
-func (a *acceptor) Prepare(logId LogId, proposal ProposalNumber) (ProposalNumber, bool) {
-	promise := a.Get(logId)
+func (a *acceptor) prepare(logId LogId, proposal ProposalNumber) (ProposalNumber, bool) {
+	promise := a.get(logId)
 
 	if promise.Proposal == COMMITED {
 		// reject if committed
@@ -51,8 +51,8 @@ func (a *acceptor) Prepare(logId LogId, proposal ProposalNumber) (ProposalNumber
 	return promise.Proposal, true
 }
 
-func (a *acceptor) Accept(logId LogId, proposal ProposalNumber, value Value) (ProposalNumber, bool) {
-	promise := a.Get(logId)
+func (a *acceptor) accept(logId LogId, proposal ProposalNumber, value Value) (ProposalNumber, bool) {
+	promise := a.get(logId)
 
 	if promise.Proposal == COMMITED {
 		// reject if committed

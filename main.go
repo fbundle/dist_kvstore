@@ -22,11 +22,12 @@ func main() {
 	for i := 0; i < n; i++ {
 		i := i
 		sList[i] = server{
-			s: paxos.NewServer(func(j paxos.LogId, v paxos.Value) {
-				sList[i].m = append(sList[i].m, v.(string))
-			}),
+			s: paxos.NewServer(),
 			m: make([]string, 0),
 		}
+		sList[i].s.Subscribe(0, func(logId paxos.LogId, value paxos.Value) {
+			sList[i].m = append(sList[i].m, fmt.Sprintf("%v", value))
+		})
 	}
 
 	// define rpc communication -
@@ -79,12 +80,23 @@ func main() {
 	}
 	wg.Wait()
 
-	// check the committed values
-	// it should print the same 3 lines
+	// update the servers
 	dropRate = 0.0
 	for i := 0; i < n; i++ {
 		paxos.Update(sList[i].s, rpcList)
+	}
+	// check the committed values
+	// it should print the same 3 lines
+	for i := 0; i < n; i++ {
 		fmt.Println(strings.Join(sList[i].m, "_"))
+	}
+
+	// new subscriber from 13
+	for i := 0; i < n; i++ {
+		sList[i].s.Subscribe(13, func(logId paxos.LogId, value paxos.Value) {
+			fmt.Printf("%v", value)
+		})
+		fmt.Println()
 	}
 
 	return
