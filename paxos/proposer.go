@@ -11,7 +11,7 @@ func quorum(n int) int {
 }
 
 // Update - check if there is an update
-func Update(s Server, rpcList []RPC) {
+func Update(s Acceptor, rpcList []RPC) {
 	for {
 		logId := s.Next()
 		commited := false
@@ -36,7 +36,7 @@ func Update(s Server, rpcList []RPC) {
 }
 
 // Write - write new value
-func Write(s Server, id NodeId, logId LogId, value Value, rpcList []RPC) bool {
+func Write(s Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool {
 	resetProposal := func() ProposalNumber {
 		return ProposalNumber(id)
 	}

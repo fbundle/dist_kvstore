@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-type server struct {
-	s paxos.Server
+type acceptor struct {
+	a paxos.Acceptor
 	m []string
 }
 
@@ -18,15 +18,15 @@ func main() {
 	n := 3
 
 	// make 3 servers
-	sList := make([]server, n)
+	acceptors := make([]acceptor, n)
 	for i := 0; i < n; i++ {
 		i := i
-		sList[i] = server{
-			s: paxos.NewServer(),
+		acceptors[i] = acceptor{
+			a: paxos.NewAcceptor(),
 			m: make([]string, 0),
 		}
-		sList[i].s.Subscribe(0, func(logId paxos.LogId, value paxos.Value) {
-			sList[i].m = append(sList[i].m, fmt.Sprintf("%v", value))
+		acceptors[i].a.Subscribe(0, func(logId paxos.LogId, value paxos.Value) {
+			acceptors[i].m = append(acceptors[i].m, fmt.Sprintf("%v", value))
 		})
 	}
 
@@ -34,16 +34,16 @@ func main() {
 	// drop 80% of requests and responses
 	// in total, 0.96% of requests don't go through
 	dropRate := 0.80
-	rpcList := make([]paxos.RPC, n)
+	rpcs := make([]paxos.RPC, n)
 	for i := 0; i < n; i++ {
 		i := i
-		rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
+		rpcs[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
 			go func() {
 				if rand.Float64() < dropRate {
 					resCh <- nil
 					return
 				}
-				res := sList[i].s.Handle(req)
+				res := acceptors[i].a.Handle(req)
 				if rand.Float64() < dropRate {
 					resCh <- nil
 					return
@@ -62,14 +62,14 @@ func main() {
 			defer wg.Done()
 			i := j % n
 			v := fmt.Sprintf("value%d", j)
-			// 1. update the server
+			// 1. update the acceptor
 			// 2. get a new logId
 			// 3. try to write the value to logId
 			// 4. if failed, go back to 1
 			for {
-				paxos.Update(sList[i].s, rpcList)
-				logId := sList[i].s.Next()
-				ok := paxos.Write(sList[i].s, paxos.NodeId(i), logId, v, rpcList)
+				paxos.Update(acceptors[i].a, rpcs)
+				logId := acceptors[i].a.Next()
+				ok := paxos.Write(acceptors[i].a, paxos.NodeId(i), logId, v, rpcs)
 				if ok {
 					break
 				}
@@ -83,17 +83,17 @@ func main() {
 	// update the servers
 	dropRate = 0.0
 	for i := 0; i < n; i++ {
-		paxos.Update(sList[i].s, rpcList)
+		paxos.Update(acceptors[i].a, rpcs)
 	}
 	// check the committed values
 	// it should print the same 3 lines
 	for i := 0; i < n; i++ {
-		fmt.Println(strings.Join(sList[i].m, "_"))
+		fmt.Println(strings.Join(acceptors[i].m, "_"))
 	}
 
 	// new subscriber from 13
 	for i := 0; i < n; i++ {
-		sList[i].s.Subscribe(13, func(logId paxos.LogId, value paxos.Value) {
+		acceptors[i].a.Subscribe(13, func(logId paxos.LogId, value paxos.Value) {
 			fmt.Printf("%v", value)
 		})
 		fmt.Println()
