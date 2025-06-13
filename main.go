@@ -30,7 +30,7 @@ func main() {
 	}
 
 	// define rpc communication
-	dropRate := 0.95
+	dropRate := 0.95 // drop 95% of requests
 	rpcList := make([]paxos.RPC, n)
 	for i := 0; i < n; i++ {
 		i := i
