@@ -19,7 +19,7 @@ type Promise struct {
 type LogId uint64
 
 type simpleAcceptor struct {
-	log kvstore.Store[LogId, Promise] // should be persistent store
+	log kvstore.Store[LogId, Promise]
 }
 
 func (a *simpleAcceptor) get(logId LogId) Promise {

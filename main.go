@@ -18,10 +18,12 @@ func main() {
 	for i := 0; i < n; i++ {
 		i := i
 		acceptorList[i] = paxos.NewAcceptor(
+			// TODO - make this store persistent
 			kvstore.NewMemStore[paxos.LogId, paxos.Promise](),
 		)
 	}
 
+	// TODO - make this tcp or http
 	// define rpc communication -
 	// drop 80% of requests and responses
 	// in total, 0.96% of requests don't go through
