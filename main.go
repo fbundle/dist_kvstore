@@ -13,7 +13,7 @@ func main() {
 	for i := 0; i < n; i++ {
 		i := i
 		server := paxos.NewServer(func(j paxos.LogId, v paxos.Value) {
-			fmt.Printf("server %d applies (%d, %v)\n", i, j, v)
+			fmt.Printf("server %d applies command (%d, %v)\n", i, j, v)
 		})
 		serverList[i] = server
 	}
@@ -22,7 +22,7 @@ func main() {
 	for i := 0; i < n; i++ {
 		i := i
 		rpc[i] = func(req paxos.Request) paxos.Response {
-			if rand.Float64() < 0.99 {
+			if rand.Float64() < 0.99 { // drop 99% of requests
 				return nil
 			}
 			server := serverList[i]
