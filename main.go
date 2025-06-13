@@ -23,6 +23,7 @@ func main() {
 		i := i
 		sList[i] = server{
 			s: paxos.NewServer(func(j paxos.LogId, v paxos.Value) {
+				fmt.Println(i, j, v)
 				sList[i].m = append(sList[i].m, v.(string))
 			}),
 			m: make([]string, 0),
@@ -30,7 +31,7 @@ func main() {
 	}
 
 	// define rpc communication
-	dropRate := 0.95 // drop 95% of requests
+	dropRate := 0.80 // drop 80% of requests and responses
 	rpcList := make([]paxos.RPC, n)
 	for i := 0; i < n; i++ {
 		i := i
@@ -42,7 +43,11 @@ func main() {
 			go func() {
 				ch <- sList[i].s.Handle(req)
 			}()
-			return <-ch
+			res := <-ch
+			if rand.Float64() < dropRate {
+				return nil
+			}
+			return res
 		}
 	}
 
