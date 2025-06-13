@@ -18,32 +18,34 @@ func main() {
 	n := 3
 
 	// make 3 servers
-	acceptors := make([]acceptor, n)
+	acceptorList := make([]acceptor, n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptors[i] = acceptor{
+		acceptorList[i] = acceptor{
 			a: paxos.NewAcceptor(),
 			m: make([]string, 0),
 		}
-		acceptors[i].a.Subscribe(0, func(logId paxos.LogId, value paxos.Value) {
-			acceptors[i].m = append(acceptors[i].m, fmt.Sprintf("%v", value))
+		acceptorList[i].a.Listen(0, func(logId paxos.LogId, value paxos.Value) {
+			acceptorList[i].m = append(acceptorList[i].m, fmt.Sprintf("%v", value))
 		})
 	}
+
+	listenerList := make([][]string, n)
 
 	// define rpc communication -
 	// drop 80% of requests and responses
 	// in total, 0.96% of requests don't go through
 	dropRate := 0.80
-	rpcs := make([]paxos.RPC, n)
+	rpcList := make([]paxos.RPC, n)
 	for i := 0; i < n; i++ {
 		i := i
-		rpcs[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
+		rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
 			go func() {
 				if rand.Float64() < dropRate {
 					resCh <- nil
 					return
 				}
-				res := acceptors[i].a.Handle(req)
+				res := acceptorList[i].a.Handle(req)
 				if rand.Float64() < dropRate {
 					resCh <- nil
 					return
@@ -67,9 +69,9 @@ func main() {
 			// 3. try to write the value to logId
 			// 4. if failed, go back to 1
 			for {
-				paxos.Update(acceptors[i].a, rpcs)
-				logId := acceptors[i].a.Next()
-				ok := paxos.Write(acceptors[i].a, paxos.NodeId(i), logId, v, rpcs)
+				paxos.Update(acceptorList[i].a, rpcList)
+				logId := acceptorList[i].a.Next()
+				ok := paxos.Write(acceptorList[i].a, paxos.NodeId(i), logId, v, rpcList)
 				if ok {
 					break
 				}
@@ -83,17 +85,17 @@ func main() {
 	// update the servers
 	dropRate = 0.0
 	for i := 0; i < n; i++ {
-		paxos.Update(acceptors[i].a, rpcs)
+		paxos.Update(acceptorList[i].a, rpcList)
 	}
 	// check the committed values
 	// it should print the same 3 lines
 	for i := 0; i < n; i++ {
-		fmt.Println(strings.Join(acceptors[i].m, "_"))
+		fmt.Println(strings.Join(acceptorList[i].m, "_"))
 	}
 
 	// new subscriber from 13
 	for i := 0; i < n; i++ {
-		acceptors[i].a.Subscribe(13, func(logId paxos.LogId, value paxos.Value) {
+		acceptorList[i].a.Listen(13, func(logId paxos.LogId, value paxos.Value) {
 			fmt.Printf("%v", value)
 		})
 		fmt.Println()

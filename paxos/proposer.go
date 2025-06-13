@@ -11,9 +11,9 @@ func quorum(n int) int {
 }
 
 // Update - check if there is an update
-func Update(s Acceptor, rpcList []RPC) {
+func Update(a Acceptor, rpcList []RPC) {
 	for {
-		logId := s.Next()
+		logId := a.Next()
 		commited := false
 		var v Value = nil
 		for _, res := range broadcast[*GetRequest, *GetResponse](rpcList, &GetRequest{
@@ -28,7 +28,7 @@ func Update(s Acceptor, rpcList []RPC) {
 		if !commited {
 			break
 		}
-		s.Handle(&CommitRequest{
+		a.Handle(&CommitRequest{
 			LogId: logId,
 			Value: v,
 		})
@@ -36,15 +36,15 @@ func Update(s Acceptor, rpcList []RPC) {
 }
 
 // Write - write new value
-func Write(s Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool {
+func Write(a Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool {
 	resetProposal := func() ProposalNumber {
 		return ProposalNumber(id)
 	}
 	n := len(rpcList)
 	proposal := resetProposal()
 	for {
-		Update(s, rpcList)
-		if _, committed := s.Get(logId); committed {
+		Update(a, rpcList)
+		if _, committed := a.Get(logId); committed {
 			return false
 		}
 		// prepare
@@ -87,7 +87,7 @@ func Write(s Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool 
 		// commit
 		{
 			// local commit
-			s.Handle(&CommitRequest{
+			a.Handle(&CommitRequest{
 				LogId: logId,
 				Value: value,
 			})

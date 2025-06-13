@@ -5,10 +5,10 @@ import (
 )
 
 type Acceptor interface {
-	Get(LogId) (Value, bool)
+	Get(logId LogId) (val Value, ok bool)
 	Next() LogId
-	Handle(Request) Response
-	Subscribe(from LogId, apply func(logId LogId, value Value)) (cancel func())
+	Handle(req Request) (res Response)
+	Listen(from LogId, listener func(logId LogId, value Value)) (cancel func())
 }
 
 func NewAcceptor() Acceptor {
@@ -16,8 +16,8 @@ func NewAcceptor() Acceptor {
 		mu:                 sync.Mutex{},
 		acceptor:           &simpleAcceptor{},
 		smallestUncommited: 0,
-		subscriberCount:    0,
-		subscriberMap:      make(map[uint64]func(logId LogId, value Value)),
+		listenerCount:      0,
+		listenerMap:        make(map[uint64]func(logId LogId, value Value)),
 	}
 }
 
@@ -26,26 +26,26 @@ type acceptor struct {
 	mu                 sync.Mutex
 	acceptor           *simpleAcceptor
 	smallestUncommited LogId
-	subscriberCount    uint64
-	subscriberMap      map[uint64]func(logId LogId, value Value)
+	listenerCount      uint64
+	listenerMap        map[uint64]func(logId LogId, value Value)
 }
 
-func (a *acceptor) Subscribe(from LogId, subscriber func(logId LogId, value Value)) (cancel func()) {
+func (a *acceptor) Listen(from LogId, listener func(logId LogId, value Value)) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.smallestUncommited < from {
 		panic("subscribe from a future log_id")
 	}
 	for logId := from; logId < a.smallestUncommited; logId++ {
-		subscriber(logId, a.acceptor.get(logId).Value)
+		listener(logId, a.acceptor.get(logId).Value)
 	}
-	count := a.subscriberCount
-	a.subscriberCount++
-	a.subscriberMap[count] = subscriber
+	count := a.listenerCount
+	a.listenerCount++
+	a.listenerMap[count] = listener
 	return func() {
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		delete(a.subscriberMap, count)
+		delete(a.listenerMap, count)
 	}
 }
 
@@ -84,8 +84,8 @@ func (a *acceptor) Handle(req Request) Response {
 			if promise.Proposal != COMMITED {
 				break
 			}
-			for _, subscriber := range a.subscriberMap {
-				subscriber(a.smallestUncommited, promise.Value)
+			for _, listener := range a.listenerMap {
+				listener(a.smallestUncommited, promise.Value)
 			}
 			a.smallestUncommited++
 		}
