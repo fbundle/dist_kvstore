@@ -69,8 +69,7 @@ func main() {
 			// 3. try to write the value to logId
 			// 4. if failed, go back to 1
 			for {
-				paxos.Update(acceptorList[i], rpcList)
-				logId := acceptorList[i].Next()
+				logId := paxos.Update(acceptorList[i], rpcList).Next()
 				ok := paxos.Write(acceptorList[i], paxos.NodeId(i), logId, v, rpcList)
 				if ok {
 					break

@@ -30,7 +30,7 @@ func broadcast[Req any, Res any](rpcList []RPC, req Req) []Res {
 }
 
 // Update - check if there is an update
-func Update(a Acceptor, rpcList []RPC) {
+func Update(a Acceptor, rpcList []RPC) Acceptor {
 	for {
 		logId := a.Next()
 		commited := false
@@ -52,6 +52,7 @@ func Update(a Acceptor, rpcList []RPC) {
 			Value: v,
 		})
 	}
+	return a
 }
 
 // Write - write new value
@@ -62,8 +63,7 @@ func Write(a Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool 
 	n := len(rpcList)
 	proposal := resetProposal()
 	for {
-		Update(a, rpcList)
-		if _, committed := a.Get(logId); committed {
+		if _, committed := Update(a, rpcList).Get(logId); committed {
 			return false
 		}
 		// prepare
