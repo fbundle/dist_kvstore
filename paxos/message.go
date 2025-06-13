@@ -31,6 +31,9 @@ type CommitRequest struct {
 	Value any   `json:"value"`
 }
 
+type CommitResponse struct {
+}
+
 type GetRequest struct {
 	LogId LogId `json:"log_id"`
 }
