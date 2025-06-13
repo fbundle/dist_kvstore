@@ -8,8 +8,8 @@ const (
 
 type Value interface{}
 
+// Promise - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
 type Promise struct {
-	// promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
 	Proposal ProposalNumber `json:"proposal"`
 	Value    Value          `json:"value"`
 }
