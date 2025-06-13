@@ -1,6 +1,8 @@
 package paxos
 
-import "paxos/kvstore"
+import (
+	"paxos/kvstore"
+)
 
 type ProposalNumber uint64
 
@@ -39,7 +41,6 @@ func (a *simpleAcceptor) get(logId LogId) (promise Promise) {
 	return a.log.Update(func(txn kvstore.Txn[LogId, Promise]) any {
 		return getOrSetLogEntry(txn, logId)
 	}).(Promise)
-
 }
 
 func (a *simpleAcceptor) commit(logId LogId, v Value) {
