@@ -2,47 +2,69 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"paxos/paxos"
+	"strings"
+	"sync"
 	"time"
 )
 
+type server struct {
+	s paxos.Server
+	m []string
+}
+
 func main() {
 	n := 3
-	serverList := make([]paxos.Server, n)
-	for i := 0; i < n; i++ {
-		i := i
-		server := paxos.NewServer(func(j paxos.LogId, v paxos.Value) {
-			fmt.Printf("server %d applies command (%d, %v)\n", i, j, v)
-		})
-		serverList[i] = server
-	}
 
-	rpc := make([]paxos.RPC, n)
+	sList := make([]server, n)
 	for i := 0; i < n; i++ {
 		i := i
-		rpc[i] = func(req paxos.Request) paxos.Response {
-			if rand.Float64() < 0.99 { // drop 99% of requests
-				return nil
-			}
-			server := serverList[i]
-			return server.Handle(req)
+		sList[i] = server{
+			s: paxos.NewServer(func(j paxos.LogId, v paxos.Value) {
+				sList[i].m = append(sList[i].m, v.(string))
+			}),
+			m: make([]string, 0),
 		}
 	}
 
+	rpcList := make([]paxos.RPC, n)
+	for i := 0; i < n; i++ {
+		i := i
+		rpcList[i] = func(req paxos.Request) paxos.Response {
+			ch := make(chan paxos.Response, 1)
+			go func() {
+				ch <- sList[i].s.Handle(req)
+			}()
+			return <-ch
+		}
+	}
+
+	wg := sync.WaitGroup{}
 	for j := 0; j < 20; j++ {
+		wg.Add(1)
 		j := j
-		s := fmt.Sprintf("hello_%dth_times", j)
-		nid := j % 3
-		for {
-			server := serverList[nid]
-			logId := server.Next()
-			ok := paxos.Write(server, paxos.NodeId(nid), logId, s, rpc)
-			if ok {
-				break
+		go func() {
+			defer wg.Done()
+			i := j % n
+			v := fmt.Sprintf("value%d", j)
+			for {
+				paxos.Update(sList[i].s, rpcList)
+				logId := sList[i].s.Next()
+				ok := paxos.Write(sList[i].s, paxos.NodeId(i), logId, v, rpcList)
+				if ok {
+					break
+				}
+
+				time.Sleep(time.Duration(rand.Int()%100) * time.Millisecond)
 			}
-		}
+		}()
 	}
-	time.Sleep(5 * time.Second)
+	wg.Wait()
+
+	for i := 0; i < n; i++ {
+		fmt.Println(strings.Join(sList[i].m, "_"))
+	}
+
 	return
 }
