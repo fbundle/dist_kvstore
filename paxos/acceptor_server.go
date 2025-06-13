@@ -18,6 +18,7 @@ func NewServer(apply func(LogId, Value)) Server {
 	}
 }
 
+// server - paxos server must be persistent
 type server struct {
 	mu          sync.Mutex
 	acceptor    *acceptor
