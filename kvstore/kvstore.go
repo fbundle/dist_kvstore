@@ -11,8 +11,6 @@ func zero[T any]() T {
 	return v
 }
 
-// TODO - implement other persistent stores
-
 type memStore[K comparable, V any] struct {
 	mu    sync.Mutex
 	store map[K]V
