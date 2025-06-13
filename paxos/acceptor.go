@@ -64,10 +64,10 @@ func (a *acceptor) Next() LogId {
 	defer a.mu.Unlock()
 	return a.smallestUncommited
 }
-func (a *acceptor) Handle(req Request) Response {
+func (a *acceptor) Handle(r Request) Response {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	switch req := req.(type) {
+	switch req := r.(type) {
 	case *PrepareRequest:
 		proposal, ok := a.acceptor.prepare(req.LogId, req.Proposal)
 		return &PrepareResponse{
