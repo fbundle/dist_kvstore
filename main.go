@@ -17,6 +17,7 @@ type server struct {
 func main() {
 	n := 3
 
+	// make 3 servers
 	sList := make([]server, n)
 	for i := 0; i < n; i++ {
 		i := i
@@ -28,8 +29,8 @@ func main() {
 		}
 	}
 
+	// define rpc communication
 	dropRate := 0.95
-
 	rpcList := make([]paxos.RPC, n)
 	for i := 0; i < n; i++ {
 		i := i
@@ -45,6 +46,7 @@ func main() {
 		}
 	}
 
+	// send updates at the same time
 	wg := sync.WaitGroup{}
 	for j := 0; j < 20; j++ {
 		wg.Add(1)
@@ -53,6 +55,10 @@ func main() {
 			defer wg.Done()
 			i := j % n
 			v := fmt.Sprintf("value%d", j)
+			// 1. update the server
+			// 2. get a new logId
+			// 3. try to write the value to logId
+			// 4. if failed, go back to 1
 			for {
 				paxos.Update(sList[i].s, rpcList)
 				logId := sList[i].s.Next()
