@@ -2,7 +2,7 @@ package kvstore
 
 import "sync"
 
-// Store - supposed to be persistent
+// Store - supposed to be threadsafe and persistent
 type Store[K comparable, V any] interface {
 	Update(k K, update func(V) V)
 }
