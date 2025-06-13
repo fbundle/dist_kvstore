@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/dgraph-io/badger/v4"
 	"math/rand/v2"
 	"paxos/kvstore"
 	"paxos/paxos"
@@ -18,15 +17,17 @@ func main() {
 	acceptorList := make([]paxos.Acceptor, n)
 	for i := 0; i < n; i++ {
 		i := i
-		opts := badger.DefaultOptions(fmt.Sprintf("data/acceptor%d", i))
-		db, err := badger.Open(opts)
-		if err != nil {
-			panic(err)
-		}
-		defer db.Close()
-		acceptorList[i] = paxos.NewAcceptor(
-			kvstore.NewBargerStore[paxos.LogId, paxos.Promise](db),
-		)
+		/*
+			opts := badger.DefaultOptions(fmt.Sprintf("data/acceptor%d", i))
+			db, err := badger.Open(opts)
+			if err != nil {
+				panic(err)
+			}
+			defer db.Close()
+			store := kvstore.NewBargerStore[paxos.LogId, paxos.Promise](db)
+		*/
+		store := kvstore.NewMemStore[paxos.LogId, paxos.Promise]()
+		acceptorList[i] = paxos.NewAcceptor(store)
 	}
 
 	// TODO - make this tcp or http

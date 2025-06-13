@@ -57,11 +57,8 @@ func Update(a Acceptor, rpcList []RPC) Acceptor {
 
 // Write - write new value
 func Write(a Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool {
-	resetProposal := func() ProposalNumber {
-		return ProposalNumber(id)
-	}
 	n := len(rpcList)
-	proposal := resetProposal()
+	proposal := compose(0, id)
 	for {
 		if _, committed := Update(a, rpcList).Get(logId); committed {
 			return false
@@ -80,7 +77,14 @@ func Write(a Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool 
 			}
 			if okCount < quorum(n) {
 				// update proposal
-				proposal = proposal + PROPOSAL_STEP
+				maxRound := uint64(0)
+				for _, res := range resList {
+					round, _ := decompose(res.Proposal)
+					if maxRound < round {
+						maxRound = round
+					}
+				}
+				proposal = compose(maxRound+1, id)
 				continue
 			}
 		}
@@ -99,7 +103,14 @@ func Write(a Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool 
 			}
 			if okCount < quorum(n) {
 				// update proposal
-				proposal = proposal + PROPOSAL_STEP
+				maxRound := uint64(0)
+				for _, res := range resList {
+					round, _ := decompose(res.Proposal)
+					if maxRound < round {
+						maxRound = round
+					}
+				}
+				proposal = compose(maxRound+1, id)
 				continue
 			}
 		}

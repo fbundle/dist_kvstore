@@ -4,12 +4,20 @@ import (
 	"paxos/kvstore"
 )
 
+// ProposalNumber - roundId * 4294967296 + nodeId
 type ProposalNumber uint64
 
 const (
 	ZERO     ProposalNumber = 0
 	COMMITED ProposalNumber = 18446744073709551615
 )
+
+func decompose(proposal ProposalNumber) (uint64, NodeId) {
+	return uint64(proposal / 4294967296), NodeId(proposal % 4294967296)
+}
+func compose(round uint64, nodeId NodeId) ProposalNumber {
+	return ProposalNumber(4294967296*round) + ProposalNumber(nodeId)
+}
 
 type Value interface{}
 
