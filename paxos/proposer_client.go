@@ -12,10 +12,19 @@ func quorum(n int) int {
 	return n/2 + 1
 }
 
-func Append(id ProposerId, value Value, rpcList []RPC) {
+func Append(id ProposerId, logId LogId, value Value, rpcList []RPC) {
 	n := len(rpcList)
-	logId := LogId(0)
 	proposal := ProposalNumber(id)
+
+	broadcastCommit := func(logId LogId, value Value) {
+		for _, rpc := range rpcList {
+			rpc(&CommitRequest{
+				LogId: logId,
+				Value: value,
+			})
+		}
+	}
+
 	for {
 		// get
 		getResponseList := make([]*GetResponse, 0)
@@ -29,6 +38,7 @@ func Append(id ProposerId, value Value, rpcList []RPC) {
 		}
 		for _, res := range getResponseList {
 			if res.Promise.Proposal == COMMITED {
+				broadcastCommit(logId, res.Promise.Value)
 				// next logId
 				logId = logId + 1
 				proposal = ProposalNumber(id)
@@ -81,11 +91,7 @@ func Append(id ProposerId, value Value, rpcList []RPC) {
 			continue
 		}
 		// commit
-		for _, rpc := range rpcList {
-			rpc(&CommitRequest{
-				LogId: logId,
-				Value: value,
-			})
-		}
+		broadcastCommit(logId, value)
+		break
 	}
 }
