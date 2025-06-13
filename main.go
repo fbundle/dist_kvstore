@@ -9,28 +9,23 @@ import (
 	"time"
 )
 
-type acceptor struct {
-	a paxos.Acceptor
-	m []string
-}
-
 func main() {
 	n := 3
 
 	// make 3 servers
-	acceptorList := make([]acceptor, n)
+	acceptorList := make([]paxos.Acceptor, n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i] = acceptor{
-			a: paxos.NewAcceptor(),
-			m: make([]string, 0),
-		}
-		acceptorList[i].a.Listen(0, func(logId paxos.LogId, value paxos.Value) {
-			acceptorList[i].m = append(acceptorList[i].m, fmt.Sprintf("%v", value))
-		})
+		acceptorList[i] = paxos.NewAcceptor()
 	}
 
 	listenerList := make([][]string, n)
+	for i := 0; i < n; i++ {
+		i := i
+		acceptorList[i].Listen(0, func(logId paxos.LogId, value paxos.Value) {
+			listenerList[i] = append(listenerList[i], fmt.Sprintf("%v", value))
+		})
+	}
 
 	// define rpc communication -
 	// drop 80% of requests and responses
@@ -45,7 +40,7 @@ func main() {
 					resCh <- nil
 					return
 				}
-				res := acceptorList[i].a.Handle(req)
+				res := acceptorList[i].Handle(req)
 				if rand.Float64() < dropRate {
 					resCh <- nil
 					return
@@ -69,9 +64,9 @@ func main() {
 			// 3. try to write the value to logId
 			// 4. if failed, go back to 1
 			for {
-				paxos.Update(acceptorList[i].a, rpcList)
-				logId := acceptorList[i].a.Next()
-				ok := paxos.Write(acceptorList[i].a, paxos.NodeId(i), logId, v, rpcList)
+				paxos.Update(acceptorList[i], rpcList)
+				logId := acceptorList[i].Next()
+				ok := paxos.Write(acceptorList[i], paxos.NodeId(i), logId, v, rpcList)
 				if ok {
 					break
 				}
@@ -85,17 +80,17 @@ func main() {
 	// update the servers
 	dropRate = 0.0
 	for i := 0; i < n; i++ {
-		paxos.Update(acceptorList[i].a, rpcList)
+		paxos.Update(acceptorList[i], rpcList)
 	}
 	// check the committed values
 	// it should print the same 3 lines
 	for i := 0; i < n; i++ {
-		fmt.Println(strings.Join(acceptorList[i].m, "_"))
+		fmt.Println(strings.Join(listenerList[i], ""))
 	}
 
 	// new subscriber from 13
 	for i := 0; i < n; i++ {
-		acceptorList[i].a.Listen(13, func(logId paxos.LogId, value paxos.Value) {
+		acceptorList[i].Listen(13, func(logId paxos.LogId, value paxos.Value) {
 			fmt.Printf("%v", value)
 		})
 		fmt.Println()
