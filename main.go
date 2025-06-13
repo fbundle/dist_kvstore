@@ -73,6 +73,8 @@ func main() {
 	}
 	wg.Wait()
 
+	// check the committed values
+	// it should print the same 3 lines
 	dropRate = 0.0
 	for i := 0; i < n; i++ {
 		paxos.Update(sList[i].s, rpcList)
