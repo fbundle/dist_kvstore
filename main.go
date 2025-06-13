@@ -19,14 +19,6 @@ func main() {
 		acceptorList[i] = paxos.NewAcceptor()
 	}
 
-	listenerList := make([][]string, n)
-	for i := 0; i < n; i++ {
-		i := i
-		acceptorList[i].Listen(0, func(logId paxos.LogId, value paxos.Value) {
-			listenerList[i] = append(listenerList[i], fmt.Sprintf("%v", value))
-		})
-	}
-
 	// define rpc communication -
 	// drop 80% of requests and responses
 	// in total, 0.96% of requests don't go through
@@ -48,6 +40,14 @@ func main() {
 				resCh <- res
 			}()
 		}
+	}
+
+	listenerList := make([][]string, n)
+	for i := 0; i < n; i++ {
+		i := i
+		acceptorList[i].Listen(0, func(logId paxos.LogId, value paxos.Value) {
+			listenerList[i] = append(listenerList[i], fmt.Sprintf("%v", value))
+		})
 	}
 
 	// send updates at the same time
