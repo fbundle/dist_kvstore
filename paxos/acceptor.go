@@ -1,7 +1,7 @@
 package paxos
 
 import (
-	"paxos/kvstore"
+	"github.com/khanh101/paxos/kvstore"
 	"sync"
 )
 

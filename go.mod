@@ -1,4 +1,4 @@
-module paxos
+module github.com/khanh101/paxos
 
 go 1.24
 

@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/paxos"
 	"math/rand/v2"
-	"paxos/kvstore"
-	"paxos/paxos"
 	"strings"
 	"sync"
 )
