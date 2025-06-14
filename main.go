@@ -7,7 +7,6 @@ import (
 	"paxos/paxos"
 	"strings"
 	"sync"
-	"time"
 )
 
 func main() {
@@ -58,34 +57,37 @@ func main() {
 	for i := 0; i < n; i++ {
 		i := i
 		acceptorList[i].Listen(0, func(logId paxos.LogId, value paxos.Value) {
+			fmt.Printf("acceptor %d log_id %d value %v\n", i, logId, value)
 			listenerList[i] = append(listenerList[i], fmt.Sprintf("%v", value))
 		})
 	}
 
 	// send updates at the same time
 	wg := sync.WaitGroup{}
-	for j := 0; j < 20; j++ {
+	for i := 0; i < n; i++ {
 		wg.Add(1)
-		j := j
 		go func() {
 			defer wg.Done()
-			i := j % n
-			v := fmt.Sprintf("value%d", j)
-			// 1. update the acceptor
-			// 2. get a new logId
-			// 3. try to write the value to logId
-			// 4. if failed, go back to 1
-			for {
-				logId := paxos.Update(acceptorList[i], rpcList).Next()
-				ok := paxos.Write(acceptorList[i], paxos.NodeId(i), logId, v, rpcList)
-				if ok {
-					break
-				}
+			for j := 0; j < 5; j++ {
+				i, j := i, j
+				v := fmt.Sprintf("node%dvalue%d", i, j)
+				for {
+					// 1. update the acceptor
+					// 2. get a new logId
+					// 3. try to write the value to logId
+					// 4. if failed, go back to 1
+					logId := paxos.Update(acceptorList[i], rpcList).Next()
+					ok := paxos.Write(acceptorList[i], paxos.NodeId(i), logId, v, rpcList)
+					if ok {
+						break
+					}
 
-				time.Sleep(time.Duration(rand.Int()%100) * time.Millisecond)
+					// time.Sleep(time.Duration(rand.Int()%100) * time.Millisecond)
+				}
 			}
 		}()
 	}
+
 	wg.Wait()
 
 	// update the servers
