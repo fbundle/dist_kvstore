@@ -12,13 +12,6 @@ const (
 	COMMITED ProposalNumber = 18446744073709551615
 )
 
-func decompose(proposal ProposalNumber) (uint64, NodeId) {
-	return uint64(proposal / 4294967296), NodeId(proposal % 4294967296)
-}
-func compose(round uint64, nodeId NodeId) ProposalNumber {
-	return ProposalNumber(4294967296*round) + ProposalNumber(nodeId)
-}
-
 type Value interface{}
 
 // Promise - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this

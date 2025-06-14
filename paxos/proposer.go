@@ -6,6 +6,13 @@ const (
 	PROPOSAL_STEP ProposalNumber = 4294967296
 )
 
+func decompose(proposal ProposalNumber) (uint64, NodeId) {
+	return uint64(proposal / PROPOSAL_STEP), NodeId(proposal % PROPOSAL_STEP)
+}
+func compose(round uint64, nodeId NodeId) ProposalNumber {
+	return PROPOSAL_STEP*ProposalNumber(round) + ProposalNumber(nodeId)
+}
+
 func quorum(n int) int {
 	return n/2 + 1
 }
