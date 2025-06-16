@@ -6,7 +6,7 @@ func combineErrors(errs ...error) error {
 	var errorList []error
 
 	for _, err := range errs {
-		if err != nil {
+		if err == nil {
 			continue
 		}
 		errorList = append(errorList, err)
