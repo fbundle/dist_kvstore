@@ -8,7 +8,6 @@ import (
 )
 
 func NewBargerStore[K comparable, V any](db *badger.DB) Store[K, V] {
-
 	return &badgerStore[K, V]{
 		mu: sync.Mutex{},
 		db: db,
