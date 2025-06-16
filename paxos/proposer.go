@@ -2,7 +2,7 @@ package paxos
 
 import "time"
 
-type NodeId uint32
+type NodeId uint64
 
 const (
 	PROPOSAL_STEP ProposalNumber = 4294967296
