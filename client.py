@@ -32,11 +32,12 @@ class KVStoreDict:
     def __getitem__(self, key: str) -> str:
         return self.kvstore[key]
 
-    def __setitem__(self, key: str, value: str):
+    def __setitem__(self, key: str, value: str) -> int:
         while True:
             try:
-                self.kvstore.set(self.kvstore.next_token(), key, value)
-                return
+                token = self.kvstore.next_token()
+                self.kvstore.set(token, key, value)
+                return token
             except requests.exceptions.HTTPError as err:
                 if err.response.status_code != 409: # not conflict
                     raise err
