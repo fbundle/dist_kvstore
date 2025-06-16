@@ -37,7 +37,7 @@ class KVStoreDict:
         try:
             return self.__getitem__(key)
         except requests.exceptions.HTTPError as err:
-            if err.response.status_code == 404:
+            if err.response.status_code == 404: # not found
                 return default
             raise err
 
