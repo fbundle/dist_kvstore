@@ -1,0 +1,17 @@
+[
+  {
+    "badger": "data/acceptor0",
+    "rpc": "localhost:3000",
+    "store": "localhost:4000"
+  },
+  {
+    "badger": "data/acceptor1",
+    "rpc": "localhost:3001",
+    "store": "localhost:4001"
+  },
+  {
+    "badger": "data/acceptor2",
+    "rpc": "localhost:3002",
+    "store": "localhost:4002"
+  }
+]

@@ -138,6 +138,8 @@ func (ds *distStore) Get(key string) (string, bool) {
 }
 
 func (ds *distStore) Set(key string, val string) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
 	for {
 		logId := paxos.Update(ds.acceptor, ds.rpcList).Next()
 		ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
