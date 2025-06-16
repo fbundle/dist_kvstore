@@ -1,5 +1,7 @@
 package paxos
 
+import "time"
+
 type NodeId uint32
 
 const (
@@ -38,6 +40,12 @@ func broadcast[Req any, Res any](rpcList []RPC, req Req) []Res {
 
 // Update - check if there is an update
 func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
+	wait := time.Millisecond
+	// exponential backoff
+	backoff := func() {
+		time.Sleep(wait)
+		wait *= 2
+	}
 	for {
 		logId := a.UpdateLocalCommit().Next()
 		commited := false
@@ -58,6 +66,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 			LogId: logId,
 			Value: v,
 		})
+		backoff()
 	}
 	return a
 }
@@ -66,6 +75,12 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC) bool {
 	n := len(rpcList)
 	proposal := compose(0, id)
+	wait := time.Millisecond
+	// exponential backoff
+	backoff := func() {
+		time.Sleep(wait)
+		wait *= 2
+	}
 	for {
 		if _, committed := Update(a, rpcList).Get(logId); committed {
 			return false
@@ -92,6 +107,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 					}
 				}
 				proposal = compose(maxRound+1, id)
+				backoff()
 				continue
 			}
 		}
@@ -118,6 +134,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 					}
 				}
 				proposal = compose(maxRound+1, id)
+				backoff()
 				continue
 			}
 		}

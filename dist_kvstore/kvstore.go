@@ -159,12 +159,19 @@ func (ds *store) Get(key string) (string, bool) {
 func (ds *store) Set(key string, val string) {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
+	wait := time.Millisecond
+	// exponential backoff
+	backoff := func() {
+		time.Sleep(wait)
+		wait *= 2
+	}
 	for {
 		logId := paxos.Update(ds.acceptor, ds.rpcList).Next()
 		ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
 		if ok {
 			break
 		}
+		backoff()
 	}
 }
 
