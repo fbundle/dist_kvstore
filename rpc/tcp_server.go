@@ -12,7 +12,7 @@ import (
 type TCPServer interface {
 	Handle(input []byte) (output []byte, err error)
 	Run() error
-	Append(name string, h any) TCPServer
+	Register(name string, h any) TCPServer
 	Close() error
 }
 
@@ -38,7 +38,7 @@ func TCPTransport(addr string) TransportFunc {
 
 type tcpServer struct {
 	mu         sync.Mutex
-	dispatcher *Dispatcher
+	dispatcher Dispatcher
 	listener   net.Listener
 }
 
@@ -62,10 +62,10 @@ func (s *tcpServer) Handle(input []byte) (output []byte, err error) {
 	return s.dispatcher.Handle(input)
 }
 
-func (s *tcpServer) Append(name string, h any) TCPServer {
+func (s *tcpServer) Register(name string, h any) TCPServer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.dispatcher.Append(name, h)
+	s.dispatcher.Register(name, h)
 	return s
 }
 

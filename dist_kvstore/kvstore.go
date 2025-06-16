@@ -69,15 +69,11 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	if err != nil {
 		return nil, err
 	}
-	server = server.Append(
-		"prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse](acceptor),
-	).Append(
-		"accept", makeHandlerFunc[paxos.AcceptRequest[command], paxos.AcceptResponse](acceptor),
-	).Append(
-		"commit", makeHandlerFunc[paxos.CommitRequest[command], paxos.CommitResponse](acceptor),
-	).Append(
-		"poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[command]](acceptor),
-	)
+	server = server.
+		Register("prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse](acceptor)).
+		Register("accept", makeHandlerFunc[paxos.AcceptRequest[command], paxos.AcceptResponse](acceptor)).
+		Register("commit", makeHandlerFunc[paxos.CommitRequest[command], paxos.CommitResponse](acceptor)).
+		Register("poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[command]](acceptor))
 
 	rpcList := make([]paxos.RPC, len(peerAddrList))
 	for i := range peerAddrList {

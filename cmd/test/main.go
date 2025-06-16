@@ -122,7 +122,7 @@ func testRPC() {
 
 	d := rpc.NewDispatcher()
 
-	d.Append("add", func(req *AddReq) (res *AddRes) {
+	d.Register("add", func(req *AddReq) (res *AddRes) {
 		sum := 0
 		for _, v := range req.Values {
 			sum += v
@@ -130,7 +130,7 @@ func testRPC() {
 		return &AddRes{
 			Sum: sum,
 		}
-	}).Append("sub", func(req *SubReq) (res *SubRes) {
+	}).Register("sub", func(req *SubReq) (res *SubRes) {
 		return &SubRes{
 			Diff: req.A - req.B,
 		}
@@ -186,7 +186,7 @@ func testRPCTCP() {
 	}
 	defer s.Close()
 
-	s.Append("add", func(req *AddReq) (res *AddRes) {
+	s.Register("add", func(req *AddReq) (res *AddRes) {
 		sum := 0
 		for _, v := range req.Values {
 			sum += v
@@ -194,7 +194,7 @@ func testRPCTCP() {
 		return &AddRes{
 			Sum: sum,
 		}
-	}).Append("sub", func(req *SubReq) (res *SubRes) {
+	}).Register("sub", func(req *SubReq) (res *SubRes) {
 		return &SubRes{
 			Diff: req.A - req.B,
 		}
@@ -228,7 +228,5 @@ func testRPCTCP() {
 }
 
 func main() {
-	testLocal()
 	testRPC()
-	testRPCTCP()
 }

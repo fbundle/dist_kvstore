@@ -16,8 +16,8 @@ func RPC[Req any, Res any](transport TransportFunc, name string, req *Req) (res 
 	if err != nil {
 		return nil, err
 	}
-	msg := Message{
-		Name: name,
+	msg := message{
+		Cmd:  name,
 		Body: body,
 	}
 	b, err := json.Marshal(msg)

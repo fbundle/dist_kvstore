@@ -6,33 +6,55 @@ import (
 	"reflect"
 )
 
+type Dispatcher interface {
+	Register(name string, h any) Dispatcher
+	Handle(input []byte) (output []byte, err error)
+}
+
+func NewDispatcher() Dispatcher {
+	return &dispatcher{
+		handlerMap: make(map[string]handler),
+	}
+}
+
+type message struct {
+	Cmd  string `json:"cmd"`
+	Body []byte `json:"body"`
+}
+
 type handler struct {
 	handlerFunc reflect.Value
 	argType     reflect.Type
 }
 
-type Dispatcher struct {
+type dispatcher struct {
 	handlerMap map[string]handler
 }
 
-func NewDispatcher() *Dispatcher {
-	return &Dispatcher{
-		handlerMap: make(map[string]handler),
+func (d *dispatcher) Register(name string, h any) Dispatcher {
+	handlerFunc := reflect.ValueOf(h)
+	handlerFuncType := handlerFunc.Type()
+	if handlerFuncType.Kind() != reflect.Func || handlerFuncType.NumIn() != 1 || handlerFuncType.NumOut() != 1 {
+		panic("handler must be of form func(*SomeRequest) *SomeResponse")
 	}
+	argType := handlerFuncType.In(0)
+	if argType.Kind() != reflect.Ptr || handlerFuncType.Out(0).Kind() != reflect.Ptr {
+		panic("handler arguments and return type must be pointers")
+	}
+	d.handlerMap[name] = handler{
+		handlerFunc: handlerFunc,
+		argType:     argType,
+	}
+	return d
 }
 
-type Message struct {
-	Name string `json:"name"`
-	Body []byte `json:"body"`
-}
-
-func (d *Dispatcher) Handle(input []byte) (output []byte, err error) {
-	msg := Message{}
+func (d *dispatcher) Handle(input []byte) (output []byte, err error) {
+	msg := message{}
 	if err := json.Unmarshal(input, &msg); err != nil {
 		return nil, err
 	}
 
-	h, ok := d.handlerMap[msg.Name]
+	h, ok := d.handlerMap[msg.Cmd]
 	if !ok {
 		return nil, fmt.Errorf("command not found")
 	}
@@ -49,21 +71,4 @@ func (d *Dispatcher) Handle(input []byte) (output []byte, err error) {
 		return nil, err
 	}
 	return output, nil
-}
-
-func (d *Dispatcher) Append(name string, h any) *Dispatcher {
-	hv := reflect.ValueOf(h)
-	ht := hv.Type()
-	if ht.Kind() != reflect.Func || ht.NumIn() != 1 || ht.NumOut() != 1 {
-		panic("handler must be of form func(*SomeRequest) *SomeResponse")
-	}
-	arg := ht.In(0)
-	if arg.Kind() != reflect.Ptr || ht.Out(0).Kind() != reflect.Ptr {
-		panic("handler arguments and return type must be pointers")
-	}
-	d.handlerMap[name] = handler{
-		handlerFunc: hv,
-		argType:     arg,
-	}
-	return d
 }
