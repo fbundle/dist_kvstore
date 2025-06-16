@@ -153,3 +153,9 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		return true
 	}
 }
+
+func LogCompact[T any](rpcList []RPC) {
+	// TODO
+	// 1. send request to get smallest logId
+	// 2. emit log compaction request
+}
