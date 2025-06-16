@@ -10,7 +10,7 @@ import (
 
 type Store interface {
 	Close() error
-	Run() error
+	RunLoop() error
 	Get(key string) (string, bool)
 	Set(key string, val string)
 	Keys() []string
@@ -30,12 +30,12 @@ type command struct {
 	Key string `json:"key"`
 	Val string `json:"val"`
 }
-type distStore struct {
+type store struct {
 	mu           sync.RWMutex
 	id           paxos.NodeId
 	peerAddrList []string
 	db           *badger.DB
-	store        kvstore.MemStore[string, string]
+	memStore     kvstore.MemStore[string, string]
 	acceptor     paxos.Acceptor[command]
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
@@ -48,9 +48,9 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		return nil, err
 	}
 	acceptor := paxos.NewAcceptor[command](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[command]](db))
-	store := kvstore.NewMemStore[string, string]()
+	memStore := kvstore.NewMemStore[string, string]()
 	acceptor.Listen(0, func(logId paxos.LogId, cmd command) {
-		store.Update(func(txn kvstore.Txn[string, string]) any {
+		memStore.Update(func(txn kvstore.Txn[string, string]) any {
 			if cmd.Val == "" {
 				txn.Del(cmd.Key)
 			} else {
@@ -105,32 +105,32 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		}
 	}
 
-	return &distStore{
+	return &store{
 		mu:           sync.RWMutex{},
 		id:           paxos.NodeId(id),
 		peerAddrList: peerAddrList,
 		db:           db,
-		store:        store,
+		memStore:     memStore,
 		acceptor:     acceptor,
 		server:       server,
 		rpcList:      rpcList,
 	}, nil
 }
 
-func (ds *distStore) Close() error {
+func (ds *store) Close() error {
 	err1 := ds.db.Close()
 	err2 := ds.server.Close()
 	return combineErrors(err1, err2)
 }
 
-func (ds *distStore) Run() error {
-	return ds.server.Run()
+func (ds *store) RunLoop() error {
+	return ds.server.RunLoop()
 }
 
-func (ds *distStore) Get(key string) (string, bool) {
+func (ds *store) Get(key string) (string, bool) {
 	ds.mu.RLock()
 	defer ds.mu.RUnlock()
-	o := ds.store.Update(func(txn kvstore.Txn[string, string]) any {
+	o := ds.memStore.Update(func(txn kvstore.Txn[string, string]) any {
 		val, ok := txn.Get(key)
 		return [2]any{val, ok}
 	}).([2]any)
@@ -138,7 +138,7 @@ func (ds *distStore) Get(key string) (string, bool) {
 	return val, ok
 }
 
-func (ds *distStore) Set(key string, val string) {
+func (ds *store) Set(key string, val string) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 	for {
@@ -155,8 +155,8 @@ func (ds *distStore) Set(key string, val string) {
 	}
 }
 
-func (ds *distStore) Keys() []string {
+func (ds *store) Keys() []string {
 	ds.mu.RLock()
 	defer ds.mu.RUnlock()
-	return ds.store.Keys()
+	return ds.memStore.Keys()
 }

@@ -208,7 +208,7 @@ func testRPCTCP() {
 		}
 	})
 
-	go s.Run()
+	go s.RunLoop()
 
 	transport := rpc.TCPTransport(addr)
 	{
@@ -253,7 +253,7 @@ func testDistKVStore() {
 			panic(err)
 		}
 		defer s.Close()
-		go s.Run()
+		go s.RunLoop()
 		sList[i] = s
 	}
 	time.Sleep(time.Second)
@@ -293,7 +293,7 @@ func main() {
 		panic(err)
 	}
 	defer ds.Close()
-	go ds.Run()
+	go ds.RunLoop()
 	time.Sleep(time.Second)
 
 	// http server
