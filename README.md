@@ -27,7 +27,7 @@ curl http://localhost:4000/kvstore_next -X GET
 curl http://localhost:4000/kvstore/<key>?token=<token> -X PUT -d "<value>"
 # read
 curl http://localhost:4000/kvstore/<key> -X GET
-# delete write empty
+# delete = write empty
 curl http://localhost:4000/kvstore/<key>?token=<token> -X PUT -d ""
 ```
 
