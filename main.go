@@ -113,9 +113,43 @@ func testLocal() {
 	return
 }
 
+type Op string
 
+const (
+	OpGet Op = "get"
+	OpSet Op = "set"
+	OpDel Op = "del"
+)
 
+type Command struct {
+	Op  Op     `json:"op"`
+	Key string `json:"key"`
+	Val string `json:"val"`
+}
+
+func runHttpServer(bindAddr string, badgerPath string) {
+	opts := badger.DefaultOptions(badgerPath)
+	db, err := badger.Open(opts)
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	acceptor := paxos.NewAcceptor(
+		kvstore.NewBargerStore[paxos.LogId, paxos.Promise](
+			db,
+		),
+	)
+
+	store := kvstore.NewMemStore[string, string]()
+	acceptor.Listen(0, func(logId paxos.LogId, value paxos.Value) {
+		command := value.(string)
+	})
+}
 
 func main() {
-	fmt.Println(os.Args[1])
+	fmt.Println(os.Args[1], os.Args[2])
+
+	bindAddr, badgerPath := os.Args[1], os.Args[2]
+
 }
