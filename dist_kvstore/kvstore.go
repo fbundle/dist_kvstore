@@ -31,7 +31,6 @@ type command struct {
 	Val string `json:"val"`
 }
 type store struct {
-	mu           sync.RWMutex
 	id           paxos.NodeId
 	peerAddrList []string
 	db           *badger.DB
@@ -39,6 +38,7 @@ type store struct {
 	acceptor     paxos.Acceptor[command]
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
+	writeMu      sync.Mutex
 }
 
 func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
@@ -106,7 +106,6 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	}
 
 	return &store{
-		mu:           sync.RWMutex{},
 		id:           paxos.NodeId(id),
 		peerAddrList: peerAddrList,
 		db:           db,
@@ -114,6 +113,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		acceptor:     acceptor,
 		server:       server,
 		rpcList:      rpcList,
+		writeMu:      sync.Mutex{},
 	}, nil
 }
 
@@ -128,8 +128,6 @@ func (ds *store) RunLoop() error {
 }
 
 func (ds *store) Get(key string) (string, bool) {
-	ds.mu.RLock()
-	defer ds.mu.RUnlock()
 	o := ds.memStore.Update(func(txn kvstore.Txn[string, string]) any {
 		val, ok := txn.Get(key)
 		return [2]any{val, ok}
@@ -139,24 +137,17 @@ func (ds *store) Get(key string) (string, bool) {
 }
 
 func (ds *store) Set(key string, val string) {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
+	ds.writeMu.Lock()
+	defer ds.writeMu.Unlock()
 	for {
 		logId := paxos.Update(ds.acceptor, ds.rpcList).Next()
 		ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
 		if ok {
-			for {
-				nextLogId := paxos.Update(ds.acceptor, ds.rpcList).Next()
-				if nextLogId == logId+1 {
-					return
-				}
-			}
+			break
 		}
 	}
 }
 
 func (ds *store) Keys() []string {
-	ds.mu.RLock()
-	defer ds.mu.RUnlock()
 	return ds.memStore.Keys()
 }
