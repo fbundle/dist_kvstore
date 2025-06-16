@@ -83,7 +83,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		wait *= 2
 	}
 	for {
-		if _, committed := a.UpdateLocalCommit().Get(logId); committed {
+		if _, committed := a.Get(logId); committed {
 			return false
 		}
 		// prepare
