@@ -74,13 +74,12 @@ func testLocal() {
 					// 2. get a new logId
 					// 3. try to write the value to logId
 					// 4. if failed, go back to 1
-					logId := paxos.Update(acceptorList[i], rpcList).Next()
+					logId := acceptorList[i].UpdateLocalCommit().Next()
 					ok := paxos.Write(acceptorList[i], paxos.NodeId(i), logId, v, rpcList)
 					if ok {
 						break
 					}
-
-					// time.Sleep(time.Duration(rand.Int()%100) * time.Millisecond)
+					paxos.Update(acceptorList[i], rpcList)
 				}
 			}
 		}(i)

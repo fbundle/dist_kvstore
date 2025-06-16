@@ -155,7 +155,7 @@ func (ds *store) Run() error {
 func (ds *store) Next() int {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
-	logId := paxos.Update(ds.acceptor, ds.rpcList).Next()
+	logId := ds.acceptor.UpdateLocalCommit().Next()
 	return int(logId)
 }
 
@@ -614,11 +614,12 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 	wait := time.Millisecond
 	// exponential backoff
 	backoff := func() {
+		a = Update(a, rpcList)
 		time.Sleep(wait)
 		wait *= 2
 	}
 	for {
-		if _, committed := Update(a, rpcList).Get(logId); committed {
+		if _, committed := a.Get(logId); committed {
 			return false
 		}
 		// prepare
@@ -1132,13 +1133,12 @@ func testLocal() {
 					// 2. get a new logId
 					// 3. try to write the value to logId
 					// 4. if failed, go back to 1
-					logId := paxos.Update(acceptorList[i], rpcList).Next()
+					logId := acceptorList[i].UpdateLocalCommit().Next()
 					ok := paxos.Write(acceptorList[i], paxos.NodeId(i), logId, v, rpcList)
 					if ok {
 						break
 					}
-
-					// time.Sleep(time.Duration(rand.Int()%100) * time.Millisecond)
+					paxos.Update(acceptorList[i], rpcList)
 				}
 			}
 		}(i)

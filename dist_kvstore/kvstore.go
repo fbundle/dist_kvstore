@@ -153,7 +153,7 @@ func (ds *store) Run() error {
 func (ds *store) Next() int {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
-	logId := paxos.Update(ds.acceptor, ds.rpcList).Next()
+	logId := ds.acceptor.UpdateLocalCommit().Next()
 	return int(logId)
 }
 

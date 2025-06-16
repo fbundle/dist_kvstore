@@ -78,11 +78,12 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 	wait := time.Millisecond
 	// exponential backoff
 	backoff := func() {
+		a = Update(a, rpcList)
 		time.Sleep(wait)
 		wait *= 2
 	}
 	for {
-		if _, committed := Update(a, rpcList).Get(logId); committed {
+		if _, committed := a.Get(logId); committed {
 			return false
 		}
 		// prepare
