@@ -9,7 +9,7 @@ type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
 	Handle(req Request) (res Response)
-	Subscribe(from LogId, subscriber func(logId LogId, value T)) (cancel func())
+	Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func())
 }
 
 func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
@@ -47,13 +47,13 @@ func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
 	return a
 }
 
-func (a *acceptor[T]) Subscribe(from LogId, subscriber func(logId LogId, value T)) (cancel func()) {
+func (a *acceptor[T]) Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.smallestUnapplied < from {
+	if a.smallestUnapplied < init {
 		panic("subscribe from a future log_id")
 	}
-	for logId := from; logId < a.smallestUnapplied; logId++ {
+	for logId := init; logId < a.smallestUnapplied; logId++ {
 		subscriber(logId, a.acceptor.get(logId).Value)
 	}
 	count := a.subscriberCount
