@@ -1397,9 +1397,6 @@ class KVStoreDict:
     def keys(self) -> list[str]:
         return self.kvstore.keys()
 
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(keys:{self.keys()})"
-
     def values(self) -> Iterator[str]:
         for k in self.keys():
             yield self.__getitem__(k)
@@ -1407,6 +1404,9 @@ class KVStoreDict:
     def items(self) -> Iterator[tuple[str, str]]:
         for k in self.keys():
             yield k, self.__getitem__(k)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(keys:{self.keys()})"
 
     def __dict__(self) -> dict[str, str]:
         return dict(self.items())
