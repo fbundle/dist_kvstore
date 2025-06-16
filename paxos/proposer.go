@@ -7,6 +7,7 @@ type NodeId uint64
 const (
 	PROPOSAL_STEP    ProposalNumber = 4294967296
 	BACKOFF_MIN_TIME                = 10 * time.Millisecond
+	BACKOFF_MAX_TIME                = 1000 * time.Millisecond
 )
 
 func decompose(proposal ProposalNumber) (uint64, NodeId) {
@@ -75,6 +76,9 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		a = Update(a, rpcList)
 		time.Sleep(wait)
 		wait *= 2
+		if wait > BACKOFF_MAX_TIME {
+			wait = BACKOFF_MAX_TIME
+		}
 	}
 	for {
 		if _, committed := a.Get(logId); committed {

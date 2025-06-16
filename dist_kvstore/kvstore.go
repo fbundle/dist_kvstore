@@ -10,12 +10,16 @@ import (
 	"time"
 )
 
+const (
+	BACKOFF_MIN_TIME = 10 * time.Millisecond
+	BACKOFF_MAX_TIME = 1000 * time.Millisecond
+)
+
 type Store interface {
 	Close() error
 	ListenAndServeRPC() error
 	Get(key string) (string, bool)
-	Next() int
-	Set(token int, key string, val string) bool
+	Set(key string, val string)
 	Keys() []string
 }
 
@@ -150,12 +154,25 @@ func (ds *store) Next() int {
 	return int(logId)
 }
 
-func (ds *store) Set(token int, key string, val string) bool {
+func (ds *store) Set(key string, val string) {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
-	logId := paxos.LogId(token)
-	ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
-	return ok
+	wait := BACKOFF_MIN_TIME
+	backoff := func() {
+		time.Sleep(wait)
+		wait *= 2
+		if wait > BACKOFF_MAX_TIME {
+			wait = BACKOFF_MAX_TIME
+		}
+	}
+	for {
+		logId := ds.acceptor.Next()
+		ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
+		if ok {
+			break
+		}
+		backoff()
+	}
 }
 
 func (ds *store) Get(key string) (string, bool) {

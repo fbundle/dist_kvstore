@@ -14,24 +14,8 @@ class KVStore:
     def __init__(self, addr: str = "http://localhost:4000"):
         self.addr = addr
 
-    def get(self, key: str) -> str:
-        return make_request("GET", self.addr, f"kvstore/{key}").text
-
-    def next_token(self) -> int:
-        return int(make_request("GET", self.addr, "kvstore_next").text)
-
-    def set(self, token: int, key: str, value: str = ""):
-        return make_request("PUT", self.addr, f"kvstore/{key}?token={token}", data=value)
-
-    def keys(self) -> list[str]:
-        return json.loads(make_request("GET", self.addr, "kvstore_keys").text)
-
-class KVStoreDict:
-    def __init__(self, addr: str = "http://localhost:4000"):
-        self.kvstore = KVStore(addr)
-
     def __getitem__(self, key: str) -> str:
-        return self.kvstore.get(key)
+        return  make_request("GET", self.addr, f"kvstore/{key}").text
 
     def get(self, key: str, default: str = "") -> str:
         try:
@@ -41,35 +25,23 @@ class KVStoreDict:
                 return default
             raise err
 
-    def __setitem__(self, key: str, value: str) -> int:
-        wait = 0.001
-        while True:
-            try:
-                token = self.kvstore.next_token()
-                self.kvstore.set(token, key, value)
-                return token
-            except requests.exceptions.HTTPError as err:
-                if err.response.status_code != 409: # not conflict
-                    raise err
-
-            time.sleep(wait)
-            wait *= 2
+    def __setitem__(self, key: str, value: str):
+        make_request("PUT", self.addr, f"kvstore/{key}", data=value)
 
     def __delitem__(self, key: str):
         self.__setitem__(key, "")
 
     def keys(self) -> list[str]:
-        return self.kvstore.keys()
+        return json.loads(make_request("GET", self.addr, "kvstore/").text)
 
     def __len__(self) -> int:
         return len(self.keys())
 
     def __contains__(self, key: str) -> bool:
-        return key in self.kvstore.keys()
+        return key in self.keys()
 
     def __iter__(self) -> Iterator[str]:
         return iter(self.keys())
-
 
     def values(self) -> Iterator[str]:
         for k in self.keys():
