@@ -90,7 +90,10 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 		fmt.Println(err)
 		return
 	}
-	conn.Write(b)
+	_, err = conn.Write(b)
+	if err != nil {
+		return
+	}
 }
 
 func (s *tcpServer) Run() error {
