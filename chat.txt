@@ -290,7 +290,7 @@ const (
 	COMMITTED ProposalNumber = 18446744073709551615
 )
 
-// Promise[T] - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
+// Promise - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
 type Promise[T any] struct {
 	Proposal ProposalNumber `json:"proposal"`
 	Value    T              `json:"value"`
