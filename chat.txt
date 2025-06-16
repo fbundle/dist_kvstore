@@ -73,20 +73,6 @@ import (
 	"sync"
 )
 
-type stableStore[K comparable, V any] struct {
-	store kvstore.Store[K, V]
-}
-
-func (s *stableStore[K, V]) Update(update func(txn kvstore.Txn[K, V]) any) any {
-	return update(s.store)
-}
-
-func makeTestStableStore[K comparable, V any]() kvstore.StableStore[K, V] {
-	return &stableStore[K, V]{
-		store: kvstore.NewMemStore[K, V](),
-	}
-}
-
 func testLocal() {
 	n := 3
 
@@ -94,7 +80,7 @@ func testLocal() {
 	acceptorList := make([]paxos.Acceptor[string], n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i] = paxos.NewAcceptor(makeTestStableStore[paxos.LogId, paxos.Promise[string]]())
+		acceptorList[i] = paxos.NewAcceptor[string](kvstore.NewMemStore[paxos.LogId, paxos.Promise[string]]())
 	}
 
 	// TODO - make this tcp or http
@@ -328,12 +314,12 @@ const (
 type Store interface {
 	Close() error
 	ListenAndServeRPC() error
-	Get(key string) (string, bool)
-	Set(key string, val string)
+	Get(Cmd) Cmd
+	Set(Cmd)
 	Keys() []string
 }
 
-func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[command]) func(*Req) *Res {
+func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[Cmd]) func(*Req) *Res {
 	return func(req *Req) *Res {
 		res := acceptor.Handle(req)
 		if res == nil {
@@ -343,21 +329,34 @@ func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[command]) func(*R
 	}
 }
 
-type command struct {
+type Cmd struct {
 	Key string `json:"key"`
 	Val string `json:"val"`
+	Ver uint64 `json:"ver"`
 }
 type store struct {
 	id           paxos.NodeId
 	peerAddrList []string
 	db           *badger.DB
-	memStore     kvstore.Store[string, string]
-	acceptor     paxos.Acceptor[command]
+	memStore     kvstore.MemStore[string, Cmd]
+	acceptor     paxos.Acceptor[Cmd]
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
 	writeMu      sync.Mutex
 	updateCtx    context.Context
 	updateCancel context.CancelFunc
+}
+
+func getDefaultCmd(txn kvstore.Txn[string, Cmd], key string) Cmd {
+	cmd, ok := txn.Get(key)
+	if !ok {
+		return Cmd{
+			Key: key,
+			Val: "",
+			Ver: 0,
+		}
+	}
+	return cmd
 }
 
 func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
@@ -366,14 +365,22 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	if err != nil {
 		return nil, err
 	}
-	acceptor := paxos.NewAcceptor[command](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[command]](db))
-	memStore := kvstore.NewMemStore[string, string]()
-	acceptor.Subscribe(0, func(logId paxos.LogId, cmd command) {
-		if cmd.Val == "" {
-			memStore.Del(cmd.Key)
-		} else {
-			memStore.Set(cmd.Key, cmd.Val)
-		}
+	acceptor := paxos.NewAcceptor[Cmd](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
+	memStore := kvstore.NewMemStore[string, Cmd]()
+	acceptor.Subscribe(0, func(logId paxos.LogId, cmd Cmd) {
+		memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {
+			oldCmd := getDefaultCmd(txn, cmd.Key)
+			if cmd.Ver <= oldCmd.Ver {
+				// update failed
+				return nil
+			}
+			if len(cmd.Val) == 0 {
+				txn.Del(cmd.Key)
+			} else {
+				txn.Set(cmd.Key, cmd)
+			}
+			return nil
+		})
 	})
 
 	server, err := rpc.NewTCPServer(bindAddr)
@@ -382,9 +389,9 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	}
 	server = server.
 		Register("prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse](acceptor)).
-		Register("accept", makeHandlerFunc[paxos.AcceptRequest[command], paxos.AcceptResponse](acceptor)).
-		Register("commit", makeHandlerFunc[paxos.CommitRequest[command], paxos.CommitResponse](acceptor)).
-		Register("poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[command]](acceptor))
+		Register("accept", makeHandlerFunc[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](acceptor)).
+		Register("commit", makeHandlerFunc[paxos.CommitRequest[Cmd], paxos.CommitResponse](acceptor)).
+		Register("poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[Cmd]](acceptor))
 
 	rpcList := make([]paxos.RPC, len(peerAddrList))
 	for i := range peerAddrList {
@@ -400,12 +407,12 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 					switch req.(type) {
 					case *paxos.PrepareRequest:
 						return rpc.RPC[paxos.PrepareRequest, paxos.PrepareResponse](transport, "prepare", req.(*paxos.PrepareRequest))
-					case *paxos.AcceptRequest[command]:
-						return rpc.RPC[paxos.AcceptRequest[command], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[command]))
-					case *paxos.CommitRequest[command]:
-						return rpc.RPC[paxos.CommitRequest[command], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[command]))
+					case *paxos.AcceptRequest[Cmd]:
+						return rpc.RPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[Cmd]))
+					case *paxos.CommitRequest[Cmd]:
+						return rpc.RPC[paxos.CommitRequest[Cmd], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[Cmd]))
 					case *paxos.PollRequest:
-						return rpc.RPC[paxos.PollRequest, paxos.PollResponse[command]](transport, "poll", req.(*paxos.PollRequest))
+						return rpc.RPC[paxos.PollRequest, paxos.PollResponse[Cmd]](transport, "poll", req.(*paxos.PollRequest))
 					default:
 						return nil, nil
 					}
@@ -457,14 +464,7 @@ func (ds *store) ListenAndServeRPC() error {
 	return ds.server.ListenAndServe()
 }
 
-func (ds *store) Next() int {
-	ds.writeMu.Lock()
-	defer ds.writeMu.Unlock()
-	logId := ds.acceptor.Next()
-	return int(logId)
-}
-
-func (ds *store) Set(key string, val string) {
+func (ds *store) Set(cmd Cmd) {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
 	wait := BACKOFF_MIN_TIME
@@ -477,7 +477,7 @@ func (ds *store) Set(key string, val string) {
 	}
 	for {
 		logId := ds.acceptor.Next()
-		ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
+		ok := paxos.Write(ds.acceptor, ds.id, logId, cmd, ds.rpcList)
 		if ok {
 			break
 		}
@@ -485,12 +485,16 @@ func (ds *store) Set(key string, val string) {
 	}
 }
 
-func (ds *store) Get(key string) (string, bool) {
-	return ds.memStore.Get(key)
+func (ds *store) Get(cmd Cmd) Cmd {
+	return ds.memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {
+		return getDefaultCmd(txn, cmd.Key)
+	}).(Cmd)
 }
 
 func (ds *store) Keys() []string {
-	return ds.memStore.Keys()
+	return ds.memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {
+		return ds.memStore.Keys()
+	}).([]string)
 }
 ./dist_kvstore/util.go
 package dist_kvstore
@@ -516,15 +520,18 @@ package dist_kvstore
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
 )
 
+type versionedValue struct {
+	Val string `json:"val"`
+	Ver uint64 `json:"ver"`
+}
+
 func HttpHandle(ds Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println(r.URL.Path)
 		if !strings.HasPrefix(r.URL.Path, "/kvstore/") {
 			http.NotFound(w, r)
 			return
@@ -542,12 +549,15 @@ func HttpHandle(ds Store) http.HandlerFunc {
 		}
 		switch r.Method {
 		case http.MethodGet:
-			val, ok := ds.Get(key)
-			if !ok {
-				http.Error(w, "key not found", http.StatusNotFound)
+			cmd := ds.Get(Cmd{
+				Key: key,
+			})
+			b, err := json.Marshal(cmd)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			_, err := w.Write([]byte(val))
+			_, err = w.Write(b)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -558,8 +568,19 @@ func HttpHandle(ds Store) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			val := string(body)
-			ds.Set(key, val)
+			v := versionedValue{}
+			err = json.Unmarshal(body, &v)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			cmd := Cmd{
+				Key: key,
+				Val: v.Val,
+				Ver: v.Ver,
+			}
+
+			ds.Set(cmd)
 			w.WriteHeader(http.StatusOK)
 		default:
 			http.Error(w, "method must be GET POST PUT", http.StatusBadRequest)
@@ -596,7 +617,7 @@ func zero[T any]() T {
 type LogId uint64
 
 type simpleAcceptor[T any] struct {
-	log kvstore.StableStore[LogId, Promise[T]]
+	log kvstore.Store[LogId, Promise[T]]
 }
 
 func getOrSetLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
@@ -679,7 +700,7 @@ type Acceptor[T any] interface {
 	Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func())
 }
 
-func NewAcceptor[T any](log kvstore.StableStore[LogId, Promise[T]]) Acceptor[T] {
+func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 	return (&acceptor[T]{
 		mu: sync.Mutex{},
 		acceptor: &simpleAcceptor[T]{
@@ -979,21 +1000,25 @@ package kvstore
 
 import "sync"
 
-func NewMemStore[K comparable, V any]() Store[K, V] {
+func NewMemStore[K comparable, V any]() MemStore[K, V] {
 	return &memStore[K, V]{
-		mu:    sync.RWMutex{},
+		mu:    sync.Mutex{},
 		store: make(map[K]V),
 	}
 }
 
 type memStore[K comparable, V any] struct {
-	mu    sync.RWMutex
+	mu    sync.Mutex
 	store map[K]V
 }
 
+func (m *memStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return update(m)
+}
+
 func (m *memStore[K, V]) Keys() (keys []K) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 	keys = make([]K, 0, len(m.store))
 	for k := range m.store {
 		keys = append(keys, k)
@@ -1002,21 +1027,15 @@ func (m *memStore[K, V]) Keys() (keys []K) {
 }
 
 func (m *memStore[K, V]) Get(k K) (v V, ok bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 	v, ok = m.store[k]
 	return v, ok
 }
 
 func (m *memStore[K, V]) Set(k K, v V) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.store[k] = v
 }
 
 func (m *memStore[K, V]) Del(k K) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	delete(m.store, k)
 }
 ./kvstore/store.go
@@ -1028,15 +1047,14 @@ type Txn[K comparable, V any] interface {
 	Del(k K)
 }
 
-// StableStore - threadsafe stable store
-type StableStore[K comparable, V any] interface {
+// Store - threadsafe stable store
+type Store[K comparable, V any] interface {
 	Update(update func(txn Txn[K, V]) any) any
 }
 
-// Store - threadsafe memory store
-type Store[K comparable, V any] interface {
-	Txn[K, V]
-	Keys() (keys []K)
+type MemStore[K comparable, V any] interface {
+	Store[K, V]
+	Keys() []K
 }
 ./kvstore/barger_store.go
 package kvstore
@@ -1048,7 +1066,7 @@ import (
 	"sync"
 )
 
-func NewBargerStore[K comparable, V any](db *badger.DB) StableStore[K, V] {
+func NewBargerStore[K comparable, V any](db *badger.DB) Store[K, V] {
 	return &badgerStore[K, V]{
 		mu: sync.Mutex{},
 		db: db,

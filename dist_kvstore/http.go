@@ -2,15 +2,18 @@ package dist_kvstore
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
 )
 
+type versionedValue struct {
+	Val string `json:"val"`
+	Ver uint64 `json:"ver"`
+}
+
 func HttpHandle(ds Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println(r.URL.Path)
 		if !strings.HasPrefix(r.URL.Path, "/kvstore/") {
 			http.NotFound(w, r)
 			return
@@ -28,12 +31,15 @@ func HttpHandle(ds Store) http.HandlerFunc {
 		}
 		switch r.Method {
 		case http.MethodGet:
-			val, ok := ds.Get(key)
-			if !ok {
-				http.Error(w, "key not found", http.StatusNotFound)
+			cmd := ds.Get(Cmd{
+				Key: key,
+			})
+			b, err := json.Marshal(cmd)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			_, err := w.Write([]byte(val))
+			_, err = w.Write(b)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -44,8 +50,19 @@ func HttpHandle(ds Store) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			val := string(body)
-			ds.Set(key, val)
+			v := versionedValue{}
+			err = json.Unmarshal(body, &v)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			cmd := Cmd{
+				Key: key,
+				Val: v.Val,
+				Ver: v.Ver,
+			}
+
+			ds.Set(cmd)
 			w.WriteHeader(http.StatusOK)
 		default:
 			http.Error(w, "method must be GET POST PUT", http.StatusBadRequest)

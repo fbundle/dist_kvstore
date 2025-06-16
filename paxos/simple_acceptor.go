@@ -26,7 +26,7 @@ func zero[T any]() T {
 type LogId uint64
 
 type simpleAcceptor[T any] struct {
-	log kvstore.StableStore[LogId, Promise[T]]
+	log kvstore.Store[LogId, Promise[T]]
 }
 
 func getOrSetLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {

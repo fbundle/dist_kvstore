@@ -19,12 +19,12 @@ const (
 type Store interface {
 	Close() error
 	ListenAndServeRPC() error
-	Get(key string) (string, bool)
-	Set(key string, val string)
+	Get(Cmd) Cmd
+	Set(Cmd)
 	Keys() []string
 }
 
-func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[command]) func(*Req) *Res {
+func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[Cmd]) func(*Req) *Res {
 	return func(req *Req) *Res {
 		res := acceptor.Handle(req)
 		if res == nil {
@@ -34,21 +34,34 @@ func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[command]) func(*R
 	}
 }
 
-type command struct {
+type Cmd struct {
 	Key string `json:"key"`
 	Val string `json:"val"`
+	Ver uint64 `json:"ver"`
 }
 type store struct {
 	id           paxos.NodeId
 	peerAddrList []string
 	db           *badger.DB
-	memStore     kvstore.Store[string, string]
-	acceptor     paxos.Acceptor[command]
+	memStore     kvstore.MemStore[string, Cmd]
+	acceptor     paxos.Acceptor[Cmd]
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
 	writeMu      sync.Mutex
 	updateCtx    context.Context
 	updateCancel context.CancelFunc
+}
+
+func getDefaultCmd(txn kvstore.Txn[string, Cmd], key string) Cmd {
+	cmd, ok := txn.Get(key)
+	if !ok {
+		return Cmd{
+			Key: key,
+			Val: "",
+			Ver: 0,
+		}
+	}
+	return cmd
 }
 
 func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
@@ -57,14 +70,22 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	if err != nil {
 		return nil, err
 	}
-	acceptor := paxos.NewAcceptor[command](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[command]](db))
-	memStore := kvstore.NewMemStore[string, string]()
-	acceptor.Subscribe(0, func(logId paxos.LogId, cmd command) {
-		if cmd.Val == "" {
-			memStore.Del(cmd.Key)
-		} else {
-			memStore.Set(cmd.Key, cmd.Val)
-		}
+	acceptor := paxos.NewAcceptor[Cmd](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
+	memStore := kvstore.NewMemStore[string, Cmd]()
+	acceptor.Subscribe(0, func(logId paxos.LogId, cmd Cmd) {
+		memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {
+			oldCmd := getDefaultCmd(txn, cmd.Key)
+			if cmd.Ver <= oldCmd.Ver {
+				// update failed
+				return nil
+			}
+			if len(cmd.Val) == 0 {
+				txn.Del(cmd.Key)
+			} else {
+				txn.Set(cmd.Key, cmd)
+			}
+			return nil
+		})
 	})
 
 	server, err := rpc.NewTCPServer(bindAddr)
@@ -73,9 +94,9 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	}
 	server = server.
 		Register("prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse](acceptor)).
-		Register("accept", makeHandlerFunc[paxos.AcceptRequest[command], paxos.AcceptResponse](acceptor)).
-		Register("commit", makeHandlerFunc[paxos.CommitRequest[command], paxos.CommitResponse](acceptor)).
-		Register("poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[command]](acceptor))
+		Register("accept", makeHandlerFunc[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](acceptor)).
+		Register("commit", makeHandlerFunc[paxos.CommitRequest[Cmd], paxos.CommitResponse](acceptor)).
+		Register("poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[Cmd]](acceptor))
 
 	rpcList := make([]paxos.RPC, len(peerAddrList))
 	for i := range peerAddrList {
@@ -91,12 +112,12 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 					switch req.(type) {
 					case *paxos.PrepareRequest:
 						return rpc.RPC[paxos.PrepareRequest, paxos.PrepareResponse](transport, "prepare", req.(*paxos.PrepareRequest))
-					case *paxos.AcceptRequest[command]:
-						return rpc.RPC[paxos.AcceptRequest[command], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[command]))
-					case *paxos.CommitRequest[command]:
-						return rpc.RPC[paxos.CommitRequest[command], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[command]))
+					case *paxos.AcceptRequest[Cmd]:
+						return rpc.RPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[Cmd]))
+					case *paxos.CommitRequest[Cmd]:
+						return rpc.RPC[paxos.CommitRequest[Cmd], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[Cmd]))
 					case *paxos.PollRequest:
-						return rpc.RPC[paxos.PollRequest, paxos.PollResponse[command]](transport, "poll", req.(*paxos.PollRequest))
+						return rpc.RPC[paxos.PollRequest, paxos.PollResponse[Cmd]](transport, "poll", req.(*paxos.PollRequest))
 					default:
 						return nil, nil
 					}
@@ -148,14 +169,7 @@ func (ds *store) ListenAndServeRPC() error {
 	return ds.server.ListenAndServe()
 }
 
-func (ds *store) Next() int {
-	ds.writeMu.Lock()
-	defer ds.writeMu.Unlock()
-	logId := ds.acceptor.Next()
-	return int(logId)
-}
-
-func (ds *store) Set(key string, val string) {
+func (ds *store) Set(cmd Cmd) {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
 	wait := BACKOFF_MIN_TIME
@@ -168,7 +182,7 @@ func (ds *store) Set(key string, val string) {
 	}
 	for {
 		logId := ds.acceptor.Next()
-		ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
+		ok := paxos.Write(ds.acceptor, ds.id, logId, cmd, ds.rpcList)
 		if ok {
 			break
 		}
@@ -176,10 +190,14 @@ func (ds *store) Set(key string, val string) {
 	}
 }
 
-func (ds *store) Get(key string) (string, bool) {
-	return ds.memStore.Get(key)
+func (ds *store) Get(cmd Cmd) Cmd {
+	return ds.memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {
+		return getDefaultCmd(txn, cmd.Key)
+	}).(Cmd)
 }
 
 func (ds *store) Keys() []string {
-	return ds.memStore.Keys()
+	return ds.memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {
+		return ds.memStore.Keys()
+	}).([]string)
 }

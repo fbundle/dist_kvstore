@@ -10,20 +10,6 @@ import (
 	"sync"
 )
 
-type stableStore[K comparable, V any] struct {
-	store kvstore.Store[K, V]
-}
-
-func (s *stableStore[K, V]) Update(update func(txn kvstore.Txn[K, V]) any) any {
-	return update(s.store)
-}
-
-func makeTestStableStore[K comparable, V any]() kvstore.StableStore[K, V] {
-	return &stableStore[K, V]{
-		store: kvstore.NewMemStore[K, V](),
-	}
-}
-
 func testLocal() {
 	n := 3
 
@@ -31,7 +17,7 @@ func testLocal() {
 	acceptorList := make([]paxos.Acceptor[string], n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i] = paxos.NewAcceptor(makeTestStableStore[paxos.LogId, paxos.Promise[string]]())
+		acceptorList[i] = paxos.NewAcceptor[string](kvstore.NewMemStore[paxos.LogId, paxos.Promise[string]]())
 	}
 
 	// TODO - make this tcp or http
