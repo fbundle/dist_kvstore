@@ -37,12 +37,12 @@ func broadcast[Req any, Res any](rpcList []RPC, req Req) []Res {
 }
 
 // Update - check if there is an update
-func Update(a Acceptor, rpcList []RPC) Acceptor {
+func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 	for {
 		logId := a.UpdateLocalCommit().Next()
 		commited := false
-		var v Value = nil
-		for _, res := range broadcast[*GetRequest, *GetResponse](rpcList, &GetRequest{
+		var v T
+		for _, res := range broadcast[*GetRequest, *GetResponse[T]](rpcList, &GetRequest{
 			LogId: logId,
 		}) {
 			if res.Promise.Proposal == COMMITED {
@@ -54,7 +54,7 @@ func Update(a Acceptor, rpcList []RPC) Acceptor {
 		if !commited {
 			break
 		}
-		a.Handle(&CommitRequest{
+		a.Handle(&CommitRequest[T]{
 			LogId: logId,
 			Value: v,
 		})
@@ -63,7 +63,7 @@ func Update(a Acceptor, rpcList []RPC) Acceptor {
 }
 
 // Write - write new value
-func Write(a Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool {
+func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC) bool {
 	n := len(rpcList)
 	proposal := compose(0, id)
 	for {
@@ -97,7 +97,7 @@ func Write(a Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool 
 		}
 		// accept
 		{
-			resList := broadcast[*AcceptRequest, *AcceptResponse](rpcList, &AcceptRequest{
+			resList := broadcast[*AcceptRequest[T], *AcceptResponse](rpcList, &AcceptRequest[T]{
 				LogId:    logId,
 				Proposal: proposal,
 				Value:    value,
@@ -124,12 +124,12 @@ func Write(a Acceptor, id NodeId, logId LogId, value Value, rpcList []RPC) bool 
 		// commit
 		{
 			// local commit
-			a.Handle(&CommitRequest{
+			a.Handle(&CommitRequest[T]{
 				LogId: logId,
 				Value: value,
 			})
 			// broadcast commit
-			broadcast[*CommitRequest, *CommitRequest](rpcList, &CommitRequest{
+			broadcast[*CommitRequest[T], *CommitResponse](rpcList, &CommitRequest[T]{
 				LogId: logId,
 				Value: value,
 			})

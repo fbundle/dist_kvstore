@@ -15,10 +15,10 @@ type PrepareResponse struct {
 	Ok       bool           `json:"ok"`
 }
 
-type AcceptRequest struct {
+type AcceptRequest[T any] struct {
 	LogId    LogId          `json:"log_id"`
 	Proposal ProposalNumber `json:"proposal"`
-	Value    any            `json:"value"`
+	Value    T              `json:"value"`
 }
 
 type AcceptResponse struct {
@@ -26,9 +26,9 @@ type AcceptResponse struct {
 	Ok       bool           `json:"ok"`
 }
 
-type CommitRequest struct {
+type CommitRequest[T any] struct {
 	LogId LogId `json:"log_id"`
-	Value any   `json:"value"`
+	Value T     `json:"value"`
 }
 
 type CommitResponse struct {
@@ -38,6 +38,6 @@ type GetRequest struct {
 	LogId LogId `json:"log_id"`
 }
 
-type GetResponse struct {
-	Promise Promise `json:"promise"`
+type GetResponse[T any] struct {
+	Promise Promise[T] `json:"promise"`
 }

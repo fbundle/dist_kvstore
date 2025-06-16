@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/khanh101/paxos/dist_kvstore"
 	"math/rand/v2"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/dgraph-io/badger/v4"
 	"github.com/khanh101/paxos/kvstore"
 	"github.com/khanh101/paxos/paxos"
 	"github.com/khanh101/paxos/rpc"
@@ -16,18 +17,10 @@ func testLocal() {
 	n := 3
 
 	// make 3 servers
-	acceptorList := make([]paxos.Acceptor, n)
+	acceptorList := make([]paxos.Acceptor[string], n)
 	for i := 0; i < n; i++ {
 		i := i
-		opts := badger.DefaultOptions(fmt.Sprintf("data/acceptor%d", i))
-		db, err := badger.Open(opts)
-		if err != nil {
-			panic(err)
-		}
-		defer db.Close()
-		store := kvstore.NewBargerStore[paxos.LogId, paxos.Promise](db)
-
-		// store := kvstore.NewMemStore[paxos.LogId, paxos.Promise]()
+		store := kvstore.NewMemStore[paxos.LogId, paxos.Promise[string]]()
 		acceptorList[i] = paxos.NewAcceptor(store)
 	}
 
@@ -58,7 +51,7 @@ func testLocal() {
 	listenerList := make([][]string, n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i].Listen(0, func(logId paxos.LogId, value paxos.Value) {
+		acceptorList[i].Listen(0, func(logId paxos.LogId, value string) {
 			fmt.Printf("acceptor %d log_id %d value %v\n", i, logId, value)
 			listenerList[i] = append(listenerList[i], fmt.Sprintf("%v", value))
 		})
@@ -104,7 +97,7 @@ func testLocal() {
 
 	// new subscriber from 13
 	for i := 0; i < n; i++ {
-		acceptorList[i].Listen(13, func(logId paxos.LogId, value paxos.Value) {
+		acceptorList[i].Listen(13, func(logId paxos.LogId, value string) {
 			fmt.Printf("%v", value)
 		})
 		fmt.Println()
@@ -238,6 +231,32 @@ func testRPCTCP() {
 	}
 }
 
+func testDistKVStore() {
+	badgerDBPathList := []string{
+		"data/acceptor0",
+		"data/acceptor1",
+		"data/acceptor2",
+	}
+	peerAddrList := []string{
+		"localhost:14000",
+		"localhost:14001",
+		"localhost:14002",
+	}
+	sList := make([]dist_kvstore.DistStore, 3)
+	for i := 0; i < 3; i++ {
+		s, err := dist_kvstore.NewDistStore(i, badgerDBPathList[i], peerAddrList)
+		if err != nil {
+			panic(err)
+		}
+		defer s.Close()
+		go s.Run()
+		sList[i] = s
+	}
+	time.Sleep(time.Second)
+	sList[0].Set("key1", "value1")
+
+}
+
 func main() {
-	testRPCTCP()
+	testLocal()
 }

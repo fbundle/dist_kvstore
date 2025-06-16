@@ -12,41 +12,44 @@ const (
 	COMMITED ProposalNumber = 18446744073709551615
 )
 
-type Value interface{}
-
-// Promise - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
-type Promise struct {
+// Promise[T] - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
+type Promise[T any] struct {
 	Proposal ProposalNumber `json:"proposal"`
-	Value    Value          `json:"value"`
+	Value    T              `json:"value"`
+}
+
+func zero[T any]() T {
+	var v T
+	return v
 }
 
 type LogId uint64
 
-type simpleAcceptor struct {
-	log kvstore.Store[LogId, Promise]
+type simpleAcceptor[T any] struct {
+	log kvstore.Store[LogId, Promise[T]]
 }
 
-func getOrSetLogEntry(txn kvstore.Txn[LogId, Promise], logId LogId) (p Promise) {
+func getOrSetLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
 	if v, ok := txn.Get(logId); ok {
 		return v
 	}
-	v := Promise{
+	v := Promise[T]{
 		Proposal: ZERO,
-		Value:    nil,
+		Value:    zero[T](),
 	}
 	txn.Set(logId, v)
 	return v
 }
 
-func (a *simpleAcceptor) get(logId LogId) (promise Promise) {
-	return a.log.Update(func(txn kvstore.Txn[LogId, Promise]) any {
+func (a *simpleAcceptor[T]) get(logId LogId) (promise Promise[T]) {
+	return a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		return getOrSetLogEntry(txn, logId)
-	}).(Promise)
+	}).(Promise[T])
 }
 
-func (a *simpleAcceptor) commit(logId LogId, v Value) {
-	a.log.Update(func(txn kvstore.Txn[LogId, Promise]) any {
-		txn.Set(logId, Promise{
+func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
+	a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+		txn.Set(logId, Promise[T]{
 			Proposal: COMMITED,
 			Value:    v,
 		})
@@ -54,8 +57,8 @@ func (a *simpleAcceptor) commit(logId LogId, v Value) {
 	})
 }
 
-func (a *simpleAcceptor) prepare(logId LogId, proposal ProposalNumber) (proposalOut ProposalNumber, ok bool) {
-	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise]) any {
+func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (proposalOut ProposalNumber, ok bool) {
+	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		p := getOrSetLogEntry(txn, logId)
 		if p.Proposal == COMMITED { // reject if committed
 			return [2]any{COMMITED, false}
@@ -64,7 +67,7 @@ func (a *simpleAcceptor) prepare(logId LogId, proposal ProposalNumber) (proposal
 			return [2]any{p.Proposal, false}
 		}
 		// make new promise
-		txn.Set(logId, Promise{
+		txn.Set(logId, Promise[T]{
 			Proposal: proposal,
 			Value:    p.Value, // old value
 		})
@@ -73,8 +76,8 @@ func (a *simpleAcceptor) prepare(logId LogId, proposal ProposalNumber) (proposal
 	return r[0].(ProposalNumber), r[1].(bool)
 }
 
-func (a *simpleAcceptor) accept(logId LogId, proposal ProposalNumber, value Value) (proposalOut ProposalNumber, ok bool) {
-	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise]) any {
+func (a *simpleAcceptor[T]) accept(logId LogId, proposal ProposalNumber, value T) (proposalOut ProposalNumber, ok bool) {
+	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		p := getOrSetLogEntry(txn, logId)
 		if p.Proposal == COMMITED { // reject if committed
 			return [2]any{COMMITED, false}
@@ -83,7 +86,7 @@ func (a *simpleAcceptor) accept(logId LogId, proposal ProposalNumber, value Valu
 			return [2]any{p.Proposal, false}
 		}
 		// make new promise
-		txn.Set(logId, Promise{
+		txn.Set(logId, Promise[T]{
 			Proposal: proposal,
 			Value:    value, // new value
 		})

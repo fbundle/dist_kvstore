@@ -9,9 +9,14 @@ import (
 )
 
 type DistStore interface {
+	Close() error
+	Run() error
+	Get(key string) (string, bool)
+	Set(key string, val string)
+	Del(key string)
 }
 
-func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor) func(*Req) *Res {
+func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[command]) func(*Req) *Res {
 	return func(req *Req) *Res {
 		res := acceptor.Handle(req)
 		if res == nil {
@@ -31,7 +36,7 @@ type distStore struct {
 	peerAddrList []string
 	db           *badger.DB
 	store        kvstore.Store[string, string]
-	acceptor     paxos.Acceptor
+	acceptor     paxos.Acceptor[command]
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
 }
@@ -42,10 +47,9 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (DistStore, 
 	if err != nil {
 		return nil, err
 	}
-	acceptor := paxos.NewAcceptor(kvstore.NewBargerStore[paxos.LogId, paxos.Promise](db))
+	acceptor := paxos.NewAcceptor[command](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[command]](db))
 	store := kvstore.NewMemStore[string, string]()
-	acceptor.Listen(0, func(logId paxos.LogId, value paxos.Value) {
-		cmd := value.(command)
+	acceptor.Listen(0, func(logId paxos.LogId, cmd command) {
 		store.Update(func(txn kvstore.Txn[string, string]) any {
 			if cmd.Val == "" {
 				txn.Del(cmd.Key)
@@ -63,11 +67,11 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (DistStore, 
 	server = server.Append(
 		"prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse](acceptor),
 	).Append(
-		"accept", makeHandlerFunc[paxos.AcceptRequest, paxos.AcceptResponse](acceptor),
+		"accept", makeHandlerFunc[paxos.AcceptRequest[command], paxos.AcceptResponse](acceptor),
 	).Append(
-		"commit", makeHandlerFunc[paxos.CommitRequest, paxos.CommitResponse](acceptor),
+		"commit", makeHandlerFunc[paxos.CommitRequest[command], paxos.CommitResponse](acceptor),
 	).Append(
-		"get", makeHandlerFunc[paxos.GetRequest, paxos.GetResponse](acceptor),
+		"get", makeHandlerFunc[paxos.GetRequest, paxos.GetResponse[command]](acceptor),
 	)
 
 	rpcList := make([]paxos.RPC, len(peerAddrList))
@@ -83,12 +87,12 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (DistStore, 
 					switch req.(type) {
 					case *paxos.PrepareRequest:
 						return rpc.RPC[paxos.PrepareRequest, paxos.PrepareResponse](transport, "prepare", req.(*paxos.PrepareRequest))
-					case *paxos.AcceptRequest:
-						return rpc.RPC[paxos.AcceptRequest, paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest))
-					case *paxos.CommitRequest:
-						return rpc.RPC[paxos.CommitRequest, paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest))
+					case *paxos.AcceptRequest[command]:
+						return rpc.RPC[paxos.AcceptRequest[command], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[command]))
+					case *paxos.CommitRequest[command]:
+						return rpc.RPC[paxos.CommitRequest[command], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[command]))
 					case *paxos.GetRequest:
-						return rpc.RPC[paxos.GetRequest, paxos.GetResponse](transport, "get", req.(*paxos.GetRequest))
+						return rpc.RPC[paxos.GetRequest, paxos.GetResponse[command]](transport, "get", req.(*paxos.GetRequest))
 					default:
 						return nil, nil
 					}
