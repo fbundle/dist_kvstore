@@ -258,5 +258,5 @@ func testDistKVStore() {
 }
 
 func main() {
-	testLocal()
+	testDistKVStore()
 }

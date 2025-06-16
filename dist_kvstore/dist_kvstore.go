@@ -13,7 +13,6 @@ type DistStore interface {
 	Run() error
 	Get(key string) (string, bool)
 	Set(key string, val string)
-	Del(key string)
 }
 
 func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[command]) func(*Req) *Res {
@@ -143,11 +142,12 @@ func (ds *distStore) Set(key string, val string) {
 		logId := paxos.Update(ds.acceptor, ds.rpcList).Next()
 		ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
 		if ok {
-			break
+			for {
+				nextLogId := paxos.Update(ds.acceptor, ds.rpcList).Next()
+				if nextLogId == logId+1 {
+					return
+				}
+			}
 		}
 	}
-}
-
-func (ds *distStore) Del(key string) {
-	ds.Set(key, "")
 }
