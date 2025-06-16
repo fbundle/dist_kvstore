@@ -246,7 +246,7 @@ func testDistKVStore() {
 		"localhost:14001",
 		"localhost:14002",
 	}
-	sList := make([]dist_kvstore.DistStore, 3)
+	sList := make([]dist_kvstore.Store, 3)
 	for i := 0; i < 3; i++ {
 		s, err := dist_kvstore.NewDistStore(i, badgerDBPathList[i], peerAddrList)
 		if err != nil {

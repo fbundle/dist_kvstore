@@ -13,16 +13,31 @@ type Txn[K comparable, V any] interface {
 	Del(k K)
 }
 
-func NewMemStore[K comparable, V any]() Store[K, V] {
+type MemStore[K comparable, V any] interface {
+	Store[K, V]
+	Keys() (keys []K)
+}
+
+func NewMemStore[K comparable, V any]() MemStore[K, V] {
 	return &memStore[K, V]{
-		mu:    sync.Mutex{},
+		mu:    sync.RWMutex{},
 		store: make(map[K]V),
 	}
 }
 
 type memStore[K comparable, V any] struct {
-	mu    sync.Mutex
+	mu    sync.RWMutex
 	store map[K]V
+}
+
+func (m *memStore[K, V]) Keys() (keys []K) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	keys = make([]K, 0, len(m.store))
+	for k := range m.store {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func (m *memStore[K, V]) Update(update func(txn Txn[K, V]) any) any {

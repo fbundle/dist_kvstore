@@ -6,12 +6,22 @@ import (
 	"strings"
 )
 
-func HttpHandle(ds DistStore) http.HandlerFunc {
+func HttpHandle(ds Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// expect path to be "/kvstore/<key>"
 		key, ok := strings.CutPrefix(r.URL.Path, "/kvstore/")
 		if !ok {
 			http.Error(w, "invalid path, expected `/kvstore/<key>`", http.StatusBadRequest)
+			return
+		}
+		if len(key) == 0 {
+			keys := ds.Keys()
+			for _, k := range keys {
+				_, err := w.Write([]byte(k + "\n"))
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+			}
 			return
 		}
 		switch r.Method {

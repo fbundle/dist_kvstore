@@ -8,11 +8,12 @@ import (
 	"sync"
 )
 
-type DistStore interface {
+type Store interface {
 	Close() error
 	Run() error
 	Get(key string) (string, bool)
 	Set(key string, val string)
+	Keys() []string
 }
 
 func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[command]) func(*Req) *Res {
@@ -34,13 +35,13 @@ type distStore struct {
 	id           paxos.NodeId
 	peerAddrList []string
 	db           *badger.DB
-	store        kvstore.Store[string, string]
+	store        kvstore.MemStore[string, string]
 	acceptor     paxos.Acceptor[command]
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
 }
 
-func NewDistStore(id int, badgerPath string, peerAddrList []string) (DistStore, error) {
+func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
 	bindAddr := peerAddrList[id]
 	db, err := badger.Open(badger.DefaultOptions(badgerPath))
 	if err != nil {
@@ -152,4 +153,10 @@ func (ds *distStore) Set(key string, val string) {
 			}
 		}
 	}
+}
+
+func (ds *distStore) Keys() []string {
+	ds.mu.RLock()
+	defer ds.mu.RUnlock()
+	return ds.store.Keys()
 }
