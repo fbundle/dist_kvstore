@@ -44,7 +44,7 @@ func main() {
 		panic(err)
 	}
 	defer ds.Close()
-	go ds.Run()
+	go ds.ListenAndServeRPC()
 	time.Sleep(time.Second)
 
 	// http server

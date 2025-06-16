@@ -200,7 +200,7 @@ func testRPCTCP() {
 		}
 	})
 
-	go s.Run()
+	go s.ListenAndServe()
 
 	transport := rpc.TCPTransport(addr)
 	{

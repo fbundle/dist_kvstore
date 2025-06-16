@@ -11,7 +11,7 @@ import (
 
 type TCPServer interface {
 	Handle(input []byte) (output []byte, err error)
-	Run() error
+	ListenAndServe() error
 	Register(name string, h any) TCPServer
 	Close() error
 }
@@ -96,7 +96,7 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 	}
 }
 
-func (s *tcpServer) Run() error {
+func (s *tcpServer) ListenAndServe() error {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {

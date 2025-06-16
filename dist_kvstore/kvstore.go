@@ -12,7 +12,7 @@ import (
 
 type Store interface {
 	Close() error
-	Run() error
+	ListenAndServeRPC() error
 	Get(key string) (string, bool)
 	Next() int
 	Set(token int, key string, val string) bool
@@ -126,7 +126,7 @@ func (ds *store) Close() error {
 	return combineErrors(err1, err2)
 }
 
-func (ds *store) Run() error {
+func (ds *store) ListenAndServeRPC() error {
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
@@ -140,7 +140,7 @@ func (ds *store) Run() error {
 		}
 
 	}()
-	return ds.server.Run()
+	return ds.server.ListenAndServe()
 }
 
 func (ds *store) Next() int {

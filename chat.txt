@@ -258,7 +258,7 @@ func testRPCTCP() {
 		}
 	})
 
-	go s.Run()
+	go s.ListenAndServe()
 
 	transport := rpc.TCPTransport(addr)
 	{
@@ -303,7 +303,7 @@ import (
 
 type Store interface {
 	Close() error
-	Run() error
+	ListenAndServeRPC() error
 	Get(key string) (string, bool)
 	Next() int
 	Set(token int, key string, val string) bool
@@ -417,7 +417,7 @@ func (ds *store) Close() error {
 	return combineErrors(err1, err2)
 }
 
-func (ds *store) Run() error {
+func (ds *store) ListenAndServeRPC() error {
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
@@ -431,7 +431,7 @@ func (ds *store) Run() error {
 		}
 
 	}()
-	return ds.server.Run()
+	return ds.server.ListenAndServe()
 }
 
 func (ds *store) Next() int {
@@ -1204,7 +1204,7 @@ import (
 
 type TCPServer interface {
 	Handle(input []byte) (output []byte, err error)
-	Run() error
+	ListenAndServe() error
 	Register(name string, h any) TCPServer
 	Close() error
 }
@@ -1289,7 +1289,7 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 	}
 }
 
-func (s *tcpServer) Run() error {
+func (s *tcpServer) ListenAndServe() error {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
@@ -1383,7 +1383,7 @@ func main() {
 		panic(err)
 	}
 	defer ds.Close()
-	go ds.Run()
+	go ds.ListenAndServeRPC()
 	time.Sleep(time.Second)
 
 	// http server
