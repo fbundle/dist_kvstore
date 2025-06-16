@@ -25,6 +25,28 @@ class KVStore:
     def keys(self) -> list[str]:
         return json.loads(make_request("GET", self.addr, "kvstore_keys").text)
 
+class KVStoreDict:
+    def __init__(self, addr: str = "http://localhost:4000"):
+        self.kvstore = KVStore(addr)
+
+    def __getitem__(self, key: str) -> str:
+        return self.kvstore[key]
+
+    def __setitem__(self, key: str, value: str):
+        while True:
+            try:
+                self.kvstore.set(self.kvstore.next_token(), key, value)
+                return
+            except requests.exceptions.HTTPError as err:
+                if err.response.status_code != 409: # not conflict
+                    raise err
+
+    def __delitem__(self, key: str):
+        self.__setitem__(key, "")
+
+    def keys(self) -> list[str]:
+        return self.kvstore.keys()
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(keys:{self.keys()})"
 
@@ -38,3 +60,6 @@ class KVStore:
 
     def __dict__(self) -> dict[str, str]:
         return dict(self.items())
+
+    def __str__(self) -> str:
+        return str(self.__dict__())
