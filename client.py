@@ -30,3 +30,15 @@ class KVStore:
             print(f"Error: {res.text}")
             return []
         return json.loads(res.text)
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}(keys:{self.keys()})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def __len__(self) -> int:
+        return len(self.keys())
+
+    def __dict__(self) -> dict[str, str]:
+        return {k: self.__getitem__(k) for k in self.keys()}
