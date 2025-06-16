@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+const (
+	TCP_TIMEOUT = 10 * time.Second
+)
+
 type TCPServer interface {
 	Handle(input []byte) (output []byte, err error)
 	ListenAndServe() error
@@ -24,7 +28,7 @@ func TCPTransport(addr string) TransportFunc {
 		}
 		defer conn.Close()
 
-		err = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		err = conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
 		if err != nil {
 			return
 		}
@@ -71,7 +75,7 @@ func (s *tcpServer) Register(name string, h any) TCPServer {
 
 func (s *tcpServer) handleConn(conn net.Conn) {
 	defer conn.Close()
-	err := conn.SetDeadline(time.Now().Add(10 * time.Second))
+	err := conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
 	if err != nil {
 		return
 	}
