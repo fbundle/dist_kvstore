@@ -147,11 +147,7 @@ func testRPC() {
 		}
 	})
 
-	localTransport := func(data []byte) ([]byte, error) {
-		// local
-		out, err := d.Handle(data)
-		return out, err
-	}
+	localTransport := d.Handle
 	{
 		res, err := rpc.RPC[AddReq, AddRes](
 			localTransport,
