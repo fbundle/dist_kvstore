@@ -13,8 +13,8 @@ type TCPServer interface {
 	Close() error
 }
 
-func TCPCall[Req any, Res any](addr string, name string, req *Req) (res *Res, err error) {
-	transport := func(input []byte) (output []byte, err error) {
+func TCPTransport(addr string) TransportFunc {
+	return func(input []byte) (output []byte, err error) {
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
 			return nil, err
@@ -24,7 +24,6 @@ func TCPCall[Req any, Res any](addr string, name string, req *Req) (res *Res, er
 		output, err = io.ReadAll(conn)
 		return output, err
 	}
-	return RPC[Req, Res](TransportFunc(transport), name, req)
 }
 
 type tcpServer struct {
@@ -39,7 +38,9 @@ func NewTCPServer(bindAddr string) (TCPServer, error) {
 		return nil, err
 	}
 	return &tcpServer{
-		listener: listener,
+		mu:         sync.Mutex{},
+		dispatcher: NewDispatcher(),
+		listener:   listener,
 	}, nil
 }
 

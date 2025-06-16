@@ -172,10 +172,71 @@ func testRPC() {
 	}
 }
 
-func testTCPRPC() {
+func testRPCTCP() {
+	type AddReq struct {
+		Values []int
+	}
 
+	type AddRes struct {
+		Sum int
+	}
+
+	type SubReq struct {
+		A int
+		B int
+	}
+
+	type SubRes struct {
+		Diff int
+	}
+
+	s, err := rpc.NewTCPServer("localhost:14001")
+	if err != nil {
+		panic(err)
+	}
+	defer s.Close()
+
+	s.Append("add", func(req *AddReq) (res *AddRes) {
+		sum := 0
+		for _, v := range req.Values {
+			sum += v
+		}
+		return &AddRes{
+			Sum: sum,
+		}
+	}).Append("sub", func(req *SubReq) (res *SubRes) {
+		return &SubRes{
+			Diff: req.A - req.B,
+		}
+	})
+
+	go s.Run()
+
+	transport := rpc.TCPTransport("localhost:14001")
+	{
+		res, err := rpc.RPC[AddReq, AddRes](
+			transport,
+			"add",
+			&AddReq{Values: []int{1, 2, 3}},
+		)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(res)
+	}
+	{
+		res, err := rpc.RPC[SubReq, SubRes](
+			transport,
+			"sub",
+			&SubReq{A: 20, B: 16},
+		)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(res)
+	}
 }
 
 func main() {
-	testRPC()
+	testRPCTCP()
 }
