@@ -824,7 +824,8 @@ import "time"
 type NodeId uint64
 
 const (
-	PROPOSAL_STEP ProposalNumber = 4294967296
+	PROPOSAL_STEP    ProposalNumber = 4294967296
+	BACKOFF_MIN_TIME                = 10 * time.Millisecond
 )
 
 func decompose(proposal ProposalNumber) (uint64, NodeId) {
@@ -859,12 +860,6 @@ func broadcast[Req any, Res any](rpcList []RPC, req Req) []Res {
 
 // Update - check if there is an update
 func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
-	wait := time.Millisecond
-	// exponential backoff
-	backoff := func() {
-		time.Sleep(wait)
-		wait *= 2
-	}
 	for {
 		logId := a.Next()
 		commited := false
@@ -885,7 +880,6 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 			LogId: logId,
 			Value: v,
 		})
-		backoff()
 	}
 	return a
 }
@@ -894,7 +888,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC) bool {
 	n := len(rpcList)
 	proposal := compose(0, id)
-	wait := time.Millisecond
+	wait := BACKOFF_MIN_TIME
 	// exponential backoff
 	backoff := func() {
 		a = Update(a, rpcList)
