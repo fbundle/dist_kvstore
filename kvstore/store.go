@@ -11,6 +11,6 @@ type Txn[K comparable, V any] interface {
 	Del(k K)
 }
 type MemStore[K comparable, V any] interface {
-	Store[K, V]
+	Txn[K, V]
 	Keys() (keys []K)
 }

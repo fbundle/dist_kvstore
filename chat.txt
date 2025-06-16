@@ -346,14 +346,11 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	acceptor := paxos.NewAcceptor[command](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[command]](db))
 	memStore := kvstore.NewMemStore[string, string]()
 	acceptor.Subscribe(0, func(logId paxos.LogId, cmd command) {
-		memStore.Update(func(txn kvstore.Txn[string, string]) any {
-			if cmd.Val == "" {
-				txn.Del(cmd.Key)
-			} else {
-				txn.Set(cmd.Key, cmd.Val)
-			}
-			return nil
-		})
+		if cmd.Val == "" {
+			memStore.Del(cmd.Key)
+		} else {
+			memStore.Set(cmd.Key, cmd.Val)
+		}
 	})
 
 	server, err := rpc.NewTCPServer(bindAddr)
@@ -453,12 +450,7 @@ func (ds *store) Set(token int, key string, val string) bool {
 }
 
 func (ds *store) Get(key string) (string, bool) {
-	o := ds.memStore.Update(func(txn kvstore.Txn[string, string]) any {
-		val, ok := txn.Get(key)
-		return [2]any{val, ok}
-	}).([2]any)
-	val, ok := o[0].(string), o[1].(bool)
-	return val, ok
+	return ds.memStore.Get(key)
 }
 
 func (ds *store) Keys() []string {
@@ -996,22 +988,22 @@ func (m *memStore[K, V]) Keys() (keys []K) {
 	return keys
 }
 
-func (m *memStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return update(m)
-}
-
 func (m *memStore[K, V]) Get(k K) (v V, ok bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	v, ok = m.store[k]
 	return v, ok
 }
 
 func (m *memStore[K, V]) Set(k K, v V) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.store[k] = v
 }
 
 func (m *memStore[K, V]) Del(k K) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	delete(m.store, k)
 }
 ./kvstore/store.go
@@ -1028,7 +1020,7 @@ type Txn[K comparable, V any] interface {
 	Del(k K)
 }
 type MemStore[K comparable, V any] interface {
-	Store[K, V]
+	Txn[K, V]
 	Keys() (keys []K)
 }
 ./kvstore/barger_store.go

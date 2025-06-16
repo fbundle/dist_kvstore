@@ -24,21 +24,21 @@ func (m *memStore[K, V]) Keys() (keys []K) {
 	return keys
 }
 
-func (m *memStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return update(m)
-}
-
 func (m *memStore[K, V]) Get(k K) (v V, ok bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	v, ok = m.store[k]
 	return v, ok
 }
 
 func (m *memStore[K, V]) Set(k K, v V) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.store[k] = v
 }
 
 func (m *memStore[K, V]) Del(k K) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	delete(m.store, k)
 }

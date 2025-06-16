@@ -55,14 +55,11 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	acceptor := paxos.NewAcceptor[command](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[command]](db))
 	memStore := kvstore.NewMemStore[string, string]()
 	acceptor.Subscribe(0, func(logId paxos.LogId, cmd command) {
-		memStore.Update(func(txn kvstore.Txn[string, string]) any {
-			if cmd.Val == "" {
-				txn.Del(cmd.Key)
-			} else {
-				txn.Set(cmd.Key, cmd.Val)
-			}
-			return nil
-		})
+		if cmd.Val == "" {
+			memStore.Del(cmd.Key)
+		} else {
+			memStore.Set(cmd.Key, cmd.Val)
+		}
 	})
 
 	server, err := rpc.NewTCPServer(bindAddr)
@@ -162,12 +159,7 @@ func (ds *store) Set(token int, key string, val string) bool {
 }
 
 func (ds *store) Get(key string) (string, bool) {
-	o := ds.memStore.Update(func(txn kvstore.Txn[string, string]) any {
-		val, ok := txn.Get(key)
-		return [2]any{val, ok}
-	}).([2]any)
-	val, ok := o[0].(string), o[1].(bool)
-	return val, ok
+	return ds.memStore.Get(key)
 }
 
 func (ds *store) Keys() []string {
