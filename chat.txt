@@ -82,6 +82,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 
 	rpcList := make([]paxos.RPC, len(peerAddrList))
 	for i := range peerAddrList {
+		i := i
 		if i == id {
 			rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
 				resCh <- acceptor.Handle(req)
