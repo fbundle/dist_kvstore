@@ -75,13 +75,10 @@ func (b *badgerStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	var out any
-	err := b.db.Update(func(txn *badger.Txn) error {
+	_ = b.db.Update(func(txn *badger.Txn) error {
 		out = update(&badgerTxn[K, V]{txn: txn})
 		return nil
 	})
-	if err != nil {
-		panic(err)
-	}
 	return out
 }
 
