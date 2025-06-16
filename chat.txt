@@ -1544,7 +1544,7 @@ go run main.go conf/kvstore.json 2
 ```bash
 # get all keys
 curl http://localhost:4000/kvstore/ -X GET
-# read
+# read, unset key are with '{"val": "", "ver": 0}' by default 
 curl http://localhost:4000/kvstore/<key> -X GET
 # update key 
 curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "<value>", "ver": <ver>}'
