@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/paxos"
 	"math/rand/v2"
 	"strings"
 	"sync"
+
+	"github.com/dgraph-io/badger/v4"
+	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/paxos"
 )
 
 func main() {
@@ -16,16 +18,15 @@ func main() {
 	acceptorList := make([]paxos.Acceptor, n)
 	for i := 0; i < n; i++ {
 		i := i
-		/*
-			opts := badger.DefaultOptions(fmt.Sprintf("data/acceptor%d", i))
-			db, err := badger.Open(opts)
-			if err != nil {
-				panic(err)
-			}
-			defer db.Close()
-			store := kvstore.NewBargerStore[paxos.LogId, paxos.Promise](db)
-		*/
-		store := kvstore.NewMemStore[paxos.LogId, paxos.Promise]()
+		opts := badger.DefaultOptions(fmt.Sprintf("data/acceptor%d", i))
+		db, err := badger.Open(opts)
+		if err != nil {
+			panic(err)
+		}
+		defer db.Close()
+		store := kvstore.NewBargerStore[paxos.LogId, paxos.Promise](db)
+
+		// store := kvstore.NewMemStore[paxos.LogId, paxos.Promise]()
 		acceptorList[i] = paxos.NewAcceptor(store)
 	}
 
@@ -70,7 +71,7 @@ func main() {
 			defer wg.Done()
 			for j := 0; j < 5; j++ {
 				i, j := i, j
-				v := fmt.Sprintf("node%dvalue%d", i, j)
+				v := fmt.Sprintf("value%d", i+3*j)
 				for {
 					// 1. update the acceptor
 					// 2. get a new logId
