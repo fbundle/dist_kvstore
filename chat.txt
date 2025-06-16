@@ -371,8 +371,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {
 			oldCmd := getDefaultCmd(txn, cmd.Key)
 			if cmd.Ver <= oldCmd.Ver {
-				// update failed
-				return nil
+				return nil // ignore update failed
 			}
 			if len(cmd.Val) == 0 {
 				txn.Del(cmd.Key)
