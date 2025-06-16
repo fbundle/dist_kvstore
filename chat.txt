@@ -954,13 +954,13 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		}
 		// commit
 		{
-			// local commit
-			a.Handle(&CommitRequest[T]{
+			// broadcast commit
+			go broadcast[*CommitRequest[T], *CommitResponse](rpcList, &CommitRequest[T]{
 				LogId: logId,
 				Value: value,
 			})
-			// broadcast commit
-			broadcast[*CommitRequest[T], *CommitResponse](rpcList, &CommitRequest[T]{
+			// local commit
+			a.Handle(&CommitRequest[T]{
 				LogId: logId,
 				Value: value,
 			})
