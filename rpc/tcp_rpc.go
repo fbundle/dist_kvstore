@@ -13,13 +13,27 @@ type TCPServer interface {
 	Close() error
 }
 
+func TCPCall[Req any, Res any](addr string, name string, req *Req) (res *Res, err error) {
+	transport := func(input []byte) (output []byte, err error) {
+		conn, err := net.Dial("tcp", addr)
+		if err != nil {
+			return nil, err
+		}
+		defer conn.Close()
+		conn.Write(input)
+		output, err = io.ReadAll(conn)
+		return output, err
+	}
+	return RPC[Req, Res](TransportFunc(transport), name, req)
+}
+
 type tcpServer struct {
 	mu         sync.Mutex
 	dispatcher *Dispatcher
 	listener   net.Listener
 }
 
-func NewTCPTCPServer(bindAddr string) (TCPServer, error) {
+func NewTCPServer(bindAddr string) (TCPServer, error) {
 	listener, err := net.Listen("tcp", bindAddr)
 	if err != nil {
 		return nil, err
