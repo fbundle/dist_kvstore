@@ -140,7 +140,7 @@ func (ds *store) ListenAndServeRPC() error {
 		}
 
 	}()
-	return ds.server.ListenAndServe()
+	return ds.server.ListenAndServeRPC()
 }
 
 func (ds *store) Next() int {

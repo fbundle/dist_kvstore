@@ -15,7 +15,7 @@ const (
 
 type TCPServer interface {
 	Handle(input []byte) (output []byte, err error)
-	ListenAndServe() error
+	ListenAndServeRPC() error
 	Register(name string, h any) TCPServer
 	Close() error
 }
@@ -100,7 +100,7 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 	}
 }
 
-func (s *tcpServer) ListenAndServe() error {
+func (s *tcpServer) ListenAndServeRPC() error {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {

@@ -213,7 +213,7 @@ func testRPCTCP() {
 		}
 	})
 
-	go s.ListenAndServe()
+	go s.ListenAndServeRPC()
 
 	transport := rpc.TCPTransport(addr)
 	{
