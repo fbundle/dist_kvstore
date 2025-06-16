@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand/v2"
+	"os"
 	"strings"
 	"sync"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/khanh101/paxos/paxos"
 )
 
-func main() {
+func testLocal() {
 	n := 3
 
 	// make 3 servers
@@ -110,4 +111,11 @@ func main() {
 	}
 
 	return
+}
+
+
+
+
+func main() {
+	fmt.Println(os.Args[1])
 }
