@@ -54,7 +54,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	}
 	acceptor := paxos.NewAcceptor[command](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[command]](db))
 	memStore := kvstore.NewMemStore[string, string]()
-	acceptor.Listen(0, func(logId paxos.LogId, cmd command) {
+	acceptor.Subscribe(0, func(logId paxos.LogId, cmd command) {
 		memStore.Update(func(txn kvstore.Txn[string, string]) any {
 			if cmd.Val == "" {
 				txn.Del(cmd.Key)

@@ -9,7 +9,7 @@ type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
 	Handle(req Request) (res Response)
-	Listen(from LogId, listener func(logId LogId, value T)) (cancel func())
+	Subscribe(from LogId, subscriber func(logId LogId, value T)) (cancel func())
 }
 
 func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
@@ -19,8 +19,8 @@ func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 			log: log,
 		},
 		smallestUnapplied: 0,
-		listenerCount:     0,
-		listenerMap:       make(map[uint64]func(logId LogId, value T)),
+		subscriberCount:   0,
+		subscriberMap:     make(map[uint64]func(logId LogId, value T)),
 	}).updateLocalCommitWithoutLock()
 }
 
@@ -29,8 +29,8 @@ type acceptor[T any] struct {
 	mu                sync.Mutex
 	acceptor          *simpleAcceptor[T]
 	smallestUnapplied LogId
-	listenerCount     uint64
-	listenerMap       map[uint64]func(logId LogId, value T)
+	subscriberCount   uint64
+	subscriberMap     map[uint64]func(logId LogId, value T)
 }
 
 func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
@@ -39,30 +39,30 @@ func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
 		if promise.Proposal != COMMITTED {
 			break
 		}
-		for _, listener := range a.listenerMap {
-			listener(a.smallestUnapplied, promise.Value)
+		for _, subscriber := range a.subscriberMap {
+			subscriber(a.smallestUnapplied, promise.Value)
 		}
 		a.smallestUnapplied++
 	}
 	return a
 }
 
-func (a *acceptor[T]) Listen(from LogId, listener func(logId LogId, value T)) (cancel func()) {
+func (a *acceptor[T]) Subscribe(from LogId, subscriber func(logId LogId, value T)) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.smallestUnapplied < from {
 		panic("subscribe from a future log_id")
 	}
 	for logId := from; logId < a.smallestUnapplied; logId++ {
-		listener(logId, a.acceptor.get(logId).Value)
+		subscriber(logId, a.acceptor.get(logId).Value)
 	}
-	count := a.listenerCount
-	a.listenerCount++
-	a.listenerMap[count] = listener
+	count := a.subscriberCount
+	a.subscriberCount++
+	a.subscriberMap[count] = subscriber
 	return func() {
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		delete(a.listenerMap, count)
+		delete(a.subscriberMap, count)
 	}
 }
 
