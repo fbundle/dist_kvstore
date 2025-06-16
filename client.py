@@ -3,7 +3,7 @@ import json
 import requests
 
 class KVStore:
-    def __init__(self, addr: str):
+    def __init__(self, addr: str = "http://localhost:4000/kvstore"):
         self.addr = addr
 
     def get(self, key: str) -> str:
