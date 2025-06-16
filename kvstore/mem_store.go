@@ -2,7 +2,7 @@ package kvstore
 
 import "sync"
 
-func NewMemStore[K comparable, V any]() MemStore[K, V] {
+func NewMemStore[K comparable, V any]() Store[K, V] {
 	return &memStore[K, V]{
 		mu:    sync.RWMutex{},
 		store: make(map[K]V),

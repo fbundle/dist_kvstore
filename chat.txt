@@ -328,7 +328,7 @@ type store struct {
 	id           paxos.NodeId
 	peerAddrList []string
 	db           *badger.DB
-	memStore     kvstore.MemStore[string, string]
+	memStore     kvstore.Store[string, string]
 	acceptor     paxos.Acceptor[command]
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
@@ -581,7 +581,7 @@ func zero[T any]() T {
 type LogId uint64
 
 type simpleAcceptor[T any] struct {
-	log kvstore.Store[LogId, Promise[T]]
+	log kvstore.StableStore[LogId, Promise[T]]
 }
 
 func getOrSetLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
@@ -664,7 +664,7 @@ type Acceptor[T any] interface {
 	Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func())
 }
 
-func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+func NewAcceptor[T any](log kvstore.StableStore[LogId, Promise[T]]) Acceptor[T] {
 	return (&acceptor[T]{
 		mu: sync.Mutex{},
 		acceptor: &simpleAcceptor[T]{
@@ -966,7 +966,7 @@ package kvstore
 
 import "sync"
 
-func NewMemStore[K comparable, V any]() MemStore[K, V] {
+func NewMemStore[K comparable, V any]() Store[K, V] {
 	return &memStore[K, V]{
 		mu:    sync.RWMutex{},
 		store: make(map[K]V),
@@ -1009,17 +1009,19 @@ func (m *memStore[K, V]) Del(k K) {
 ./kvstore/store.go
 package kvstore
 
-// Store - supposed to be threadsafe for each key and persistent
-type Store[K comparable, V any] interface {
-	Update(update func(txn Txn[K, V]) any) any
-}
-
 type Txn[K comparable, V any] interface {
 	Get(k K) (v V, ok bool)
 	Set(k K, v V)
 	Del(k K)
 }
-type MemStore[K comparable, V any] interface {
+
+// StableStore - threadsafe stable store
+type StableStore[K comparable, V any] interface {
+	Update(update func(txn Txn[K, V]) any) any
+}
+
+// Store - threadsafe memory store
+type Store[K comparable, V any] interface {
 	Txn[K, V]
 	Keys() (keys []K)
 }
@@ -1033,7 +1035,7 @@ import (
 	"sync"
 )
 
-func NewBargerStore[K comparable, V any](db *badger.DB) Store[K, V] {
+func NewBargerStore[K comparable, V any](db *badger.DB) StableStore[K, V] {
 	return &badgerStore[K, V]{
 		mu: sync.Mutex{},
 		db: db,

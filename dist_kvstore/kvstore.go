@@ -37,7 +37,7 @@ type store struct {
 	id           paxos.NodeId
 	peerAddrList []string
 	db           *badger.DB
-	memStore     kvstore.MemStore[string, string]
+	memStore     kvstore.Store[string, string]
 	acceptor     paxos.Acceptor[command]
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC

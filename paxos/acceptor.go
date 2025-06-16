@@ -12,7 +12,7 @@ type Acceptor[T any] interface {
 	Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func())
 }
 
-func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+func NewAcceptor[T any](log kvstore.StableStore[LogId, Promise[T]]) Acceptor[T] {
 	return (&acceptor[T]{
 		mu: sync.Mutex{},
 		acceptor: &simpleAcceptor[T]{
