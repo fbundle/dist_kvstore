@@ -172,6 +172,10 @@ func testRPC() {
 	}
 }
 
+func testTCPRPC() {
+
+}
+
 func main() {
 	testRPC()
 }
