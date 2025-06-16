@@ -167,6 +167,7 @@ func newDStore(id int, badgerPath string, addrList []string) *dstore {
 
 	acceptor.Listen(0, func(logId paxos.LogId, value paxos.Value) {
 		cmd := value.(command)
+		fmt.Println(cmd)
 		if cmd.Op == OpSet {
 			store.Update(func(txn kvstore.Txn[string, string]) any {
 				txn.Set(cmd.Key, cmd.Val)
@@ -195,27 +196,28 @@ func newDStore(id int, badgerPath string, addrList []string) *dstore {
 				}
 				req1, res1 := func() (*paxosRequest, paxos.Response) {
 					switch r.(type) {
-					case paxos.PrepareRequest:
+					case *paxos.PrepareRequest:
 						return &paxosRequest{
 							Type: "prepare",
 							Body: b,
 						}, &paxos.PrepareResponse{}
-					case paxos.AcceptRequest:
+					case *paxos.AcceptRequest:
 						return &paxosRequest{
 							Type: "accept",
 							Body: b,
 						}, &paxos.AcceptResponse{}
-					case paxos.CommitRequest:
+					case *paxos.CommitRequest:
 						return &paxosRequest{
 							Type: "commit",
 							Body: b,
 						}, &paxos.CommitResponse{}
-					case paxos.GetRequest:
+					case *paxos.GetRequest:
 						return &paxosRequest{
 							Type: "get",
 							Body: b,
 						}, &paxos.GetResponse{}
 					default:
+						fmt.Println(r, string(b))
 						panic("wrong type")
 					}
 				}()
