@@ -134,14 +134,15 @@ func (ds *store) Close() error {
 
 func (ds *store) RunLoop() error {
 	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ds.updateCtx.Done():
 				return
-			default:
+			case <-ticker.C:
+				paxos.Update(ds.acceptor, ds.rpcList).Next()
 			}
-			paxos.Update(ds.acceptor, ds.rpcList).Next()
-			time.Sleep(100 * time.Millisecond) // update every 100 milliseconds
 		}
 
 	}()
