@@ -686,8 +686,7 @@ func (a *acceptor[T]) Get(logId LogId) (T, bool) {
 func (a *acceptor[T]) Next() LogId {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.updateLocalCommitWithoutLock()
-	return a.smallestUnapplied
+	return a.updateLocalCommitWithoutLock().smallestUnapplied
 }
 func (a *acceptor[T]) Handle(r Request) Response {
 	a.mu.Lock()
