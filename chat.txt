@@ -1437,6 +1437,7 @@ import json
 import time
 from typing import Iterator
 
+import pydantic
 import requests
 
 
@@ -1445,57 +1446,64 @@ def make_request(method: str, addr: str, path: str, **kwargs) -> requests.Respon
     res.raise_for_status()
     return res
 
+class Cmd(pydantic.BaseModel):
+    key: str
+    val: str
+    ver: int
+
 class KVStore:
     def __init__(self, addr: str = "http://localhost:4000"):
         self.addr = addr
 
-    def __getitem__(self, key: str) -> str:
-        return  make_request("GET", self.addr, f"kvstore/{key}").text
+    def get(self, key: str) -> Cmd:
+        return Cmd.model_validate_json(make_request("GET", self.addr, f"kvstore/{key}").text)
 
-    def get(self, key: str, default: str = "") -> str:
-        try:
-            return self.__getitem__(key)
-        except requests.exceptions.HTTPError as err:
-            if err.response.status_code == 404: # not found
-                return default
-            raise err
-
-    def __setitem__(self, key: str, value: str):
-        make_request("PUT", self.addr, f"kvstore/{key}", data=value)
-
-    def __delitem__(self, key: str):
-        self.__setitem__(key, "")
+    def set(self, key: str, val: str, ver: int):
+        make_request("PUT", self.addr, f"kvstore/{key}", data=json.dumps({"val": val, "ver": ver}))
 
     def keys(self) -> list[str]:
         return json.loads(make_request("GET", self.addr, "kvstore/").text)
 
-    def __len__(self) -> int:
-        return len(self.keys())
+class KVStoreDict:
+    def __init__(self, addr: str = "http://localhost:4000"):
+        self.kvstore = KVStore(addr)
 
-    def __contains__(self, key: str) -> bool:
-        return key in self.keys()
+    def __getitem__(self, key: str) -> str:
+        return self.kvstore.get(key).val
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.keys())
+    def __setitem__(self, key: str, val: str):
+        wait = 0.001
+        while True:
+            try:
+                self.kvstore.set(key, val, self.kvstore.get(key).ver + 1)
+                return
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code != 409:
+                    raise
+                time.sleep(wait)
+                wait *= 2
+
+    def keys(self) -> list[str]:
+        return self.kvstore.keys()
+
+    def __delitem__(self, key: str):
+        self.__setitem__(key, "")
+
+
 
     def values(self) -> Iterator[str]:
-        for k in self.keys():
-            yield self.__getitem__(k)
+        for key in self.keys():
+            yield self.__getitem__(key)
 
     def items(self) -> Iterator[tuple[str, str]]:
-        for k in self.keys():
-            yield k, self.__getitem__(k)
+        for key in self.keys():
+            yield key, self.__getitem__(key)
 
     def __dict__(self) -> dict[str, str]:
         return dict(self.items())
 
-    def __str__(self) -> str:
-        return str(self.__dict__())
-
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(keys:[{', '.join(map(lambda s:f'"{s}"', self.keys()))}, ...])"
-
-./conf/kvstore.json
+        return repr(self.__dict__())./conf/kvstore.json
 [
   {
     "badger": "data/acceptor0",
