@@ -190,7 +190,8 @@ func testRPCTCP() {
 		Diff int
 	}
 
-	s, err := rpc.NewTCPServer("localhost:14001")
+	addr := "localhost:14001"
+	s, err := rpc.NewTCPServer(addr)
 	if err != nil {
 		panic(err)
 	}
@@ -212,7 +213,7 @@ func testRPCTCP() {
 
 	go s.Run()
 
-	transport := rpc.TCPTransport("localhost:14001")
+	transport := rpc.TCPTransport(addr)
 	{
 		res, err := rpc.RPC[AddReq, AddRes](
 			transport,
