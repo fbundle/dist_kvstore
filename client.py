@@ -10,7 +10,7 @@ class KVStore:
         return requests.get(f"{self.addr}/{key}").text
 
     def set(self, key: str, value: str = ""):
-        return requests.post(f'{self.addr}/{key}', data=value).text
+        return requests.post(f"{self.addr}/{key}", data=value).text
 
     def keys(self) -> list[str]:
         text = requests.get(f"{self.addr}/").text
