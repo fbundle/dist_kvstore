@@ -43,7 +43,7 @@ func (a *acceptor[T]) UpdateLocalCommit() Acceptor[T] {
 func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
 	for {
 		promise := a.acceptor.get(a.smallestUnapplied)
-		if promise.Proposal != COMMITED {
+		if promise.Proposal != COMMITTED {
 			break
 		}
 		for _, listener := range a.listenerMap {
@@ -77,7 +77,7 @@ func (a *acceptor[T]) Get(logId LogId) (T, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	promise := a.acceptor.get(logId)
-	return promise.Value, promise.Proposal == COMMITED
+	return promise.Value, promise.Proposal == COMMITTED
 }
 
 func (a *acceptor[T]) Next() LogId {

@@ -53,7 +53,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 		for _, res := range broadcast[*GetRequest, *GetResponse[T]](rpcList, &GetRequest{
 			LogId: logId,
 		}) {
-			if res.Promise.Proposal == COMMITED {
+			if res.Promise.Proposal == COMMITTED {
 				v = res.Promise.Value
 				commited = true
 				break

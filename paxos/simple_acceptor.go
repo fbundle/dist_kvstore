@@ -8,8 +8,8 @@ import (
 type ProposalNumber uint64
 
 const (
-	ZERO     ProposalNumber = 0
-	COMMITED ProposalNumber = 18446744073709551615
+	INITIAL   ProposalNumber = 0
+	COMMITTED ProposalNumber = 18446744073709551615
 )
 
 // Promise[T] - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
@@ -34,7 +34,7 @@ func getOrSetLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p
 		return v
 	}
 	v := Promise[T]{
-		Proposal: ZERO,
+		Proposal: INITIAL,
 		Value:    zero[T](),
 	}
 	txn.Set(logId, v)
@@ -50,7 +50,7 @@ func (a *simpleAcceptor[T]) get(logId LogId) (promise Promise[T]) {
 func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
 	a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		txn.Set(logId, Promise[T]{
-			Proposal: COMMITED,
+			Proposal: COMMITTED,
 			Value:    v,
 		})
 		return nil
@@ -60,8 +60,8 @@ func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
 func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (proposalOut ProposalNumber, ok bool) {
 	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		p := getOrSetLogEntry(txn, logId)
-		if p.Proposal == COMMITED { // reject if committed
-			return [2]any{COMMITED, false}
+		if p.Proposal == COMMITTED { // reject if committed
+			return [2]any{COMMITTED, false}
 		}
 		if proposal <= p.Proposal { // fulfill promise
 			return [2]any{p.Proposal, false}
@@ -79,8 +79,8 @@ func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (propo
 func (a *simpleAcceptor[T]) accept(logId LogId, proposal ProposalNumber, value T) (proposalOut ProposalNumber, ok bool) {
 	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		p := getOrSetLogEntry(txn, logId)
-		if p.Proposal == COMMITED { // reject if committed
-			return [2]any{COMMITED, false}
+		if p.Proposal == COMMITTED { // reject if committed
+			return [2]any{COMMITTED, false}
 		}
 		if proposal < p.Proposal { // fulfill promise
 			return [2]any{p.Proposal, false}
