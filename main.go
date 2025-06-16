@@ -208,7 +208,7 @@ func testRPCTCP() {
 		}
 	})
 
-	go s.RunLoop()
+	go s.Run()
 
 	transport := rpc.TCPTransport(addr)
 	{
@@ -233,31 +233,6 @@ func testRPCTCP() {
 		}
 		fmt.Println(res)
 	}
-}
-
-func testDistKVStore() {
-	badgerDBPathList := []string{
-		"data/acceptor0",
-		"data/acceptor1",
-		"data/acceptor2",
-	}
-	peerAddrList := []string{
-		"localhost:14000",
-		"localhost:14001",
-		"localhost:14002",
-	}
-	sList := make([]dist_kvstore.Store, 3)
-	for i := 0; i < 3; i++ {
-		s, err := dist_kvstore.NewDistStore(i, badgerDBPathList[i], peerAddrList)
-		if err != nil {
-			panic(err)
-		}
-		defer s.Close()
-		go s.RunLoop()
-		sList[i] = s
-	}
-	time.Sleep(time.Second)
-	sList[0].Set("key1", "value1")
 }
 
 type Config struct {
@@ -293,7 +268,7 @@ func main() {
 		panic(err)
 	}
 	defer ds.Close()
-	go ds.RunLoop()
+	go ds.Run()
 	time.Sleep(time.Second)
 
 	// http server

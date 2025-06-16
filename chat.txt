@@ -14,9 +14,10 @@ import (
 
 type Store interface {
 	Close() error
-	RunLoop() error
+	Run() error
 	Get(key string) (string, bool)
-	Set(key string, val string)
+	Next() int
+	Set(token int, key string, val string) bool
 	Keys() []string
 }
 
@@ -134,7 +135,7 @@ func (ds *store) Close() error {
 	return combineErrors(err1, err2)
 }
 
-func (ds *store) RunLoop() error {
+func (ds *store) Run() error {
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
@@ -148,26 +149,22 @@ func (ds *store) RunLoop() error {
 		}
 
 	}()
-	return ds.server.RunLoop()
+	return ds.server.Run()
 }
 
-func (ds *store) Set(key string, val string) {
+func (ds *store) Next() int {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
-	wait := time.Millisecond
-	// exponential backoff
-	backoff := func() {
-		time.Sleep(wait)
-		wait *= 2
-	}
-	for {
-		logId := paxos.Update(ds.acceptor, ds.rpcList).Next()
-		ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
-		if ok {
-			break
-		}
-		backoff()
-	}
+	logId := paxos.Update(ds.acceptor, ds.rpcList).Next()
+	return int(logId)
+}
+
+func (ds *store) Set(token int, key string, val string) bool {
+	ds.writeMu.Lock()
+	defer ds.writeMu.Unlock()
+	logId := paxos.LogId(token)
+	ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
+	return ok
 }
 
 func (ds *store) Get(key string) (string, bool) {
@@ -208,55 +205,73 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
 func HttpHandle(ds Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// expect path to be "/kvstore/<key>"
-		key, ok := strings.CutPrefix(r.URL.Path, "/kvstore/")
-		if !ok {
-			http.Error(w, "invalid path, expected `/kvstore/<key>`", http.StatusBadRequest)
-			return
-		}
-		if len(key) == 0 {
+		if strings.HasPrefix(r.URL.Path, "/kvstore_keys") {
 			keys := ds.Keys()
 			b, err := json.Marshal(keys)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
 			_, err = w.Write(b)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-			val, ok := ds.Get(key)
-			if !ok {
-				http.Error(w, "key not found", http.StatusNotFound)
-				return
-			}
-			_, err := w.Write([]byte(val))
+		} else if strings.HasPrefix(r.URL.Path, "/kvstore_next") {
+			token := ds.Next()
+			tokenStr := strconv.Itoa(token)
+			_, err := w.Write([]byte(tokenStr))
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-		case http.MethodPost, http.MethodPut:
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
+		} else if strings.HasPrefix(r.URL.Path, "/kvstore/") {
+			key, _ := strings.CutPrefix(r.URL.Path, "/kvstore/")
+			switch r.Method {
+			case http.MethodGet:
+				val, ok := ds.Get(key)
+				if !ok {
+					http.Error(w, "key not found", http.StatusNotFound)
+					return
+				}
+				_, err := w.Write([]byte(val))
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+			case http.MethodPost, http.MethodPut:
+				tokenStr := r.URL.Query().Get("token")
+				if tokenStr == "" {
+					http.Error(w, "token is required", http.StatusBadRequest)
+					return
+				}
+				token, err := strconv.Atoi(tokenStr)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				val := string(body)
+				ok := ds.Set(token, key, val)
+				if !ok {
+					http.Error(w, "token conflict", http.StatusConflict)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+			default:
+				http.Error(w, "method must be GET POST PUT", http.StatusBadRequest)
 			}
-			ds.Set(key, string(body))
-			w.WriteHeader(http.StatusOK)
-		case http.MethodDelete:
-			ds.Set(key, "")
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.Error(w, "method must be GET POST PUT DELETE", http.StatusBadRequest)
-			return
+		} else {
+			http.NotFound(w, r)
 		}
 	}
 }
@@ -911,7 +926,7 @@ import (
 
 type TCPServer interface {
 	Handle(input []byte) (output []byte, err error)
-	RunLoop() error
+	Run() error
 	Append(name string, h any) TCPServer
 	Close() error
 }
@@ -993,7 +1008,7 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 	conn.Write(b)
 }
 
-func (s *tcpServer) RunLoop() error {
+func (s *tcpServer) Run() error {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
@@ -1251,7 +1266,7 @@ func testRPCTCP() {
 		}
 	})
 
-	go s.RunLoop()
+	go s.Run()
 
 	transport := rpc.TCPTransport(addr)
 	{
@@ -1276,31 +1291,6 @@ func testRPCTCP() {
 		}
 		fmt.Println(res)
 	}
-}
-
-func testDistKVStore() {
-	badgerDBPathList := []string{
-		"data/acceptor0",
-		"data/acceptor1",
-		"data/acceptor2",
-	}
-	peerAddrList := []string{
-		"localhost:14000",
-		"localhost:14001",
-		"localhost:14002",
-	}
-	sList := make([]dist_kvstore.Store, 3)
-	for i := 0; i < 3; i++ {
-		s, err := dist_kvstore.NewDistStore(i, badgerDBPathList[i], peerAddrList)
-		if err != nil {
-			panic(err)
-		}
-		defer s.Close()
-		go s.RunLoop()
-		sList[i] = s
-	}
-	time.Sleep(time.Second)
-	sList[0].Set("key1", "value1")
 }
 
 type Config struct {
@@ -1336,7 +1326,7 @@ func main() {
 		panic(err)
 	}
 	defer ds.Close()
-	go ds.RunLoop()
+	go ds.Run()
 	time.Sleep(time.Second)
 
 	// http server

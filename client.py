@@ -4,33 +4,34 @@ from typing import Iterator
 
 import requests
 
+type HTTPError = requests.Response
+
 class KVStore:
-    def __init__(self, addr: str = "http://localhost:4000/kvstore"):
+    def __init__(self, addr: str = "http://localhost:4000"):
         self.addr = addr
 
     def __getitem__(self, key: str) -> str:
-        res = requests.get(f"{self.addr}/{key}")
-        if res.status_code != 200:
-            print(f"Error: {res.status_code} {res.text}", file=sys.stderr)
-            return ""
+        res = requests.get(f"{self.addr}/kvstore/{key}")
+        res.raise_for_status()
         return res.text
 
-    def __setitem__(self, key: str, value: str = ""):
-        res = requests.post(f"{self.addr}/{key}", data=value)
-        if res.status_code != 200:
-            print(f"Error: {res.status_code} {res.text}", file=sys.stderr)
-            return ""
-        return res.text
+    def next_token(self) -> int:
+        res = requests.get(f"{self.addr}/kvstore_next")
+        res.raise_for_status()
+        return int(res.text)
 
-    def __delitem__(self, key: str):
-        return self.__setitem__(key, "")
+
+    def set(self, token: int, key: str, value: str = ""):
+        res = requests.post(f"{self.addr}/kvstore/{key}?token={token}", data=value)
+        res.raise_for_status()
+
+    def __delitem__(self, token: int, key: str):
+        return self.set(token, key, "")
 
 
     def keys(self) -> list[str]:
-        res = requests.get(f"{self.addr}/")
-        if res.status_code != 200:
-            print(f"Error: {res.status_code} {res.text}", file=sys.stderr)
-            return []
+        res = requests.get(f"{self.addr}/kvstore_keys")
+        res.raise_for_status()
         return json.loads(res.text)
 
     def __repr__(self) -> str:

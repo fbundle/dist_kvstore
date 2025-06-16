@@ -12,9 +12,10 @@ import (
 
 type Store interface {
 	Close() error
-	RunLoop() error
+	Run() error
 	Get(key string) (string, bool)
-	Set(key string, val string)
+	Next() int
+	Set(token int, key string, val string) bool
 	Keys() []string
 }
 
@@ -132,7 +133,7 @@ func (ds *store) Close() error {
 	return combineErrors(err1, err2)
 }
 
-func (ds *store) RunLoop() error {
+func (ds *store) Run() error {
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
@@ -146,26 +147,22 @@ func (ds *store) RunLoop() error {
 		}
 
 	}()
-	return ds.server.RunLoop()
+	return ds.server.Run()
 }
 
-func (ds *store) Set(key string, val string) {
+func (ds *store) Next() int {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
-	wait := time.Millisecond
-	// exponential backoff
-	backoff := func() {
-		time.Sleep(wait)
-		wait *= 2
-	}
-	for {
-		logId := paxos.Update(ds.acceptor, ds.rpcList).Next()
-		ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
-		if ok {
-			break
-		}
-		backoff()
-	}
+	logId := paxos.Update(ds.acceptor, ds.rpcList).Next()
+	return int(logId)
+}
+
+func (ds *store) Set(token int, key string, val string) bool {
+	ds.writeMu.Lock()
+	defer ds.writeMu.Unlock()
+	logId := paxos.LogId(token)
+	ok := paxos.Write(ds.acceptor, ds.id, logId, command{Key: key, Val: val}, ds.rpcList)
+	return ok
 }
 
 func (ds *store) Get(key string) (string, bool) {
