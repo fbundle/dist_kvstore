@@ -1491,7 +1491,7 @@ class KVStoreDict:
         return str(self.__dict__())
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(keys:{self.keys()})"
+        return f"{self.__class__.__name__}(keys:[{', '.join(map(lambda s:f'"{s}"', self.keys()))}, ...])"
 
 ./conf/kvstore.json
 [
