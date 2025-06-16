@@ -34,10 +34,10 @@ type CommitRequest[T any] struct {
 type CommitResponse struct {
 }
 
-type GetRequest struct {
+type PollRequest struct {
 	LogId LogId `json:"log_id"`
 }
 
-type GetResponse[T any] struct {
+type PollResponse[T any] struct {
 	Promise Promise[T] `json:"promise"`
 }

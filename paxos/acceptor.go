@@ -98,9 +98,9 @@ func (a *acceptor[T]) Handle(r Request) Response {
 		a.acceptor.commit(req.LogId, req.Value)
 		a.updateLocalCommitWithoutLock()
 		return nil
-	case *GetRequest:
+	case *PollRequest:
 		promise := a.acceptor.get(req.LogId)
-		return &GetResponse[T]{
+		return &PollResponse[T]{
 			Promise: promise,
 		}
 	default:

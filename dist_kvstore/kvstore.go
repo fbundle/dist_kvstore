@@ -76,7 +76,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	).Append(
 		"commit", makeHandlerFunc[paxos.CommitRequest[command], paxos.CommitResponse](acceptor),
 	).Append(
-		"get", makeHandlerFunc[paxos.GetRequest, paxos.GetResponse[command]](acceptor),
+		"poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[command]](acceptor),
 	)
 
 	rpcList := make([]paxos.RPC, len(peerAddrList))
@@ -97,8 +97,8 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 						return rpc.RPC[paxos.AcceptRequest[command], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[command]))
 					case *paxos.CommitRequest[command]:
 						return rpc.RPC[paxos.CommitRequest[command], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[command]))
-					case *paxos.GetRequest:
-						return rpc.RPC[paxos.GetRequest, paxos.GetResponse[command]](transport, "get", req.(*paxos.GetRequest))
+					case *paxos.PollRequest:
+						return rpc.RPC[paxos.PollRequest, paxos.PollResponse[command]](transport, "poll", req.(*paxos.PollRequest))
 					default:
 						return nil, nil
 					}

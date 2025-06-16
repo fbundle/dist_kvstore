@@ -369,7 +369,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	).Append(
 		"commit", makeHandlerFunc[paxos.CommitRequest[command], paxos.CommitResponse](acceptor),
 	).Append(
-		"get", makeHandlerFunc[paxos.GetRequest, paxos.GetResponse[command]](acceptor),
+		"poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[command]](acceptor),
 	)
 
 	rpcList := make([]paxos.RPC, len(peerAddrList))
@@ -390,8 +390,8 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 						return rpc.RPC[paxos.AcceptRequest[command], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[command]))
 					case *paxos.CommitRequest[command]:
 						return rpc.RPC[paxos.CommitRequest[command], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[command]))
-					case *paxos.GetRequest:
-						return rpc.RPC[paxos.GetRequest, paxos.GetResponse[command]](transport, "get", req.(*paxos.GetRequest))
+					case *paxos.PollRequest:
+						return rpc.RPC[paxos.PollRequest, paxos.PollResponse[command]](transport, "poll", req.(*paxos.PollRequest))
 					default:
 						return nil, nil
 					}
@@ -764,9 +764,9 @@ func (a *acceptor[T]) Handle(r Request) Response {
 		a.acceptor.commit(req.LogId, req.Value)
 		a.updateLocalCommitWithoutLock()
 		return nil
-	case *GetRequest:
+	case *PollRequest:
 		promise := a.acceptor.get(req.LogId)
-		return &GetResponse[T]{
+		return &PollResponse[T]{
 			Promise: promise,
 		}
 	default:
@@ -810,11 +810,11 @@ type CommitRequest[T any] struct {
 type CommitResponse struct {
 }
 
-type GetRequest struct {
+type PollRequest struct {
 	LogId LogId `json:"log_id"`
 }
 
-type GetResponse[T any] struct {
+type PollResponse[T any] struct {
 	Promise Promise[T] `json:"promise"`
 }
 ./paxos/proposer.go
@@ -870,7 +870,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 		logId := a.Next()
 		commited := false
 		var v T
-		for _, res := range broadcast[*GetRequest, *GetResponse[T]](rpcList, &GetRequest{
+		for _, res := range broadcast[*PollRequest, *PollResponse[T]](rpcList, &PollRequest{
 			LogId: logId,
 		}) {
 			if res.Promise.Proposal == COMMITTED {

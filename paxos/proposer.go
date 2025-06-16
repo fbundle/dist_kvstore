@@ -50,7 +50,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 		logId := a.Next()
 		commited := false
 		var v T
-		for _, res := range broadcast[*GetRequest, *GetResponse[T]](rpcList, &GetRequest{
+		for _, res := range broadcast[*PollRequest, *PollResponse[T]](rpcList, &PollRequest{
 			LogId: logId,
 		}) {
 			if res.Promise.Proposal == COMMITTED {
