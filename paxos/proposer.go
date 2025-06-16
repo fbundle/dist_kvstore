@@ -47,7 +47,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 		wait *= 2
 	}
 	for {
-		logId := a.UpdateLocalCommit().Next()
+		logId := a.Next()
 		commited := false
 		var v T
 		for _, res := range broadcast[*GetRequest, *GetResponse[T]](rpcList, &GetRequest{

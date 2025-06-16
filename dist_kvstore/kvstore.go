@@ -153,7 +153,7 @@ func (ds *store) Run() error {
 func (ds *store) Next() int {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
-	logId := ds.acceptor.UpdateLocalCommit().Next()
+	logId := ds.acceptor.Next()
 	return int(logId)
 }
 

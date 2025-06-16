@@ -6,7 +6,6 @@ import (
 )
 
 type Acceptor[T any] interface {
-	UpdateLocalCommit() Acceptor[T]
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
 	Handle(req Request) (res Response)
@@ -32,12 +31,6 @@ type acceptor[T any] struct {
 	smallestUnapplied LogId
 	listenerCount     uint64
 	listenerMap       map[uint64]func(logId LogId, value T)
-}
-
-func (a *acceptor[T]) UpdateLocalCommit() Acceptor[T] {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.updateLocalCommitWithoutLock()
 }
 
 func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
@@ -83,6 +76,7 @@ func (a *acceptor[T]) Get(logId LogId) (T, bool) {
 func (a *acceptor[T]) Next() LogId {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.updateLocalCommitWithoutLock()
 	return a.smallestUnapplied
 }
 func (a *acceptor[T]) Handle(r Request) Response {

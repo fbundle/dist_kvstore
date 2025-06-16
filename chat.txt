@@ -68,7 +68,7 @@ func testLocal() {
 					// 2. get a new logId
 					// 3. try to write the value to logId
 					// 4. if failed, go back to 1
-					logId := acceptorList[i].UpdateLocalCommit().Next()
+					logId := acceptorList[i].Next()
 					ok := paxos.Write(acceptorList[i], paxos.NodeId(i), logId, v, rpcList)
 					if ok {
 						break
@@ -389,7 +389,7 @@ func (ds *store) Run() error {
 func (ds *store) Next() int {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
-	logId := ds.acceptor.UpdateLocalCommit().Next()
+	logId := ds.acceptor.Next()
 	return int(logId)
 }
 
@@ -615,7 +615,6 @@ import (
 )
 
 type Acceptor[T any] interface {
-	UpdateLocalCommit() Acceptor[T]
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
 	Handle(req Request) (res Response)
@@ -641,12 +640,6 @@ type acceptor[T any] struct {
 	smallestUnapplied LogId
 	listenerCount     uint64
 	listenerMap       map[uint64]func(logId LogId, value T)
-}
-
-func (a *acceptor[T]) UpdateLocalCommit() Acceptor[T] {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.updateLocalCommitWithoutLock()
 }
 
 func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
@@ -692,6 +685,7 @@ func (a *acceptor[T]) Get(logId LogId) (T, bool) {
 func (a *acceptor[T]) Next() LogId {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.updateLocalCommitWithoutLock()
 	return a.smallestUnapplied
 }
 func (a *acceptor[T]) Handle(r Request) Response {
@@ -817,7 +811,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 		wait *= 2
 	}
 	for {
-		logId := a.UpdateLocalCommit().Next()
+		logId := a.Next()
 		commited := false
 		var v T
 		for _, res := range broadcast[*GetRequest, *GetResponse[T]](rpcList, &GetRequest{
