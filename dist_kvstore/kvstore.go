@@ -148,15 +148,6 @@ func (ds *store) RunLoop() error {
 	return ds.server.RunLoop()
 }
 
-func (ds *store) Get(key string) (string, bool) {
-	o := ds.memStore.Update(func(txn kvstore.Txn[string, string]) any {
-		val, ok := txn.Get(key)
-		return [2]any{val, ok}
-	}).([2]any)
-	val, ok := o[0].(string), o[1].(bool)
-	return val, ok
-}
-
 func (ds *store) Set(key string, val string) {
 	ds.writeMu.Lock()
 	defer ds.writeMu.Unlock()
@@ -174,6 +165,15 @@ func (ds *store) Set(key string, val string) {
 		}
 		backoff()
 	}
+}
+
+func (ds *store) Get(key string) (string, bool) {
+	o := ds.memStore.Update(func(txn kvstore.Txn[string, string]) any {
+		val, ok := txn.Get(key)
+		return [2]any{val, ok}
+	}).([2]any)
+	val, ok := o[0].(string), o[1].(bool)
+	return val, ok
 }
 
 func (ds *store) Keys() []string {
