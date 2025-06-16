@@ -1,5 +1,6 @@
 import json
 import sys
+import time
 from typing import Iterator
 
 import requests
@@ -33,6 +34,7 @@ class KVStoreDict:
         return self.kvstore.get(key)
 
     def __setitem__(self, key: str, value: str) -> int:
+        wait = 0.001
         while True:
             try:
                 token = self.kvstore.next_token()
@@ -41,6 +43,9 @@ class KVStoreDict:
             except requests.exceptions.HTTPError as err:
                 if err.response.status_code != 409: # not conflict
                     raise err
+
+            time.sleep(wait)
+            wait *= 2
 
     def __delitem__(self, key: str):
         self.__setitem__(key, "")

@@ -3,6 +3,7 @@
 echo "below is an implementation of paxos algorithm"
 
 find . -name "*.go" -type f -print -exec cat {} \;
+find . -name "*.py" -type f -print -exec cat {} \;
 find . -name "*.json" -type f -print -exec cat {} \;
 find . -name "*.md" -type f -print -exec cat {} \;
 
