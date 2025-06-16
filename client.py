@@ -1,9 +1,9 @@
 import json
-import sys
 import time
 from typing import Iterator
 
 import requests
+
 
 def make_request(method: str, addr: str, path: str, **kwargs) -> requests.Response:
     res = requests.request(method, f"{addr}/{path}", **kwargs)
