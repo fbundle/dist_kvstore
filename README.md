@@ -20,15 +20,15 @@ go run main.go conf/kvstore.json 2
 
 ```bash
 # get all keys
-curl http://localhost:4000/kvstore_keys -X GET
-# get next write token
-curl http://localhost:4000/kvstore_next -X GET
-# write 
-curl http://localhost:4000/kvstore/<key>?token=<token> -X PUT -d "<value>"
+curl http://localhost:4000/kvstore/ -X GET
 # read
 curl http://localhost:4000/kvstore/<key> -X GET
-# delete = write empty
-curl http://localhost:4000/kvstore/<key>?token=<token> -X PUT -d ""
+# write new key 
+curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "<value>", "ver": 1}'
+# update key 
+curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "<value>", "ver": <ver>}'
+# delete key
+curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "", "ver": <ver>}'
 ```
 
 
