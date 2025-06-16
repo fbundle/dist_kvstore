@@ -13,7 +13,7 @@ class KVStore:
     def __init__(self, addr: str = "http://localhost:4000"):
         self.addr = addr
 
-    def __getitem__(self, key: str) -> str:
+    def get(self, key: str) -> str:
         return make_request("GET", self.addr, f"kvstore/{key}").text
 
     def next_token(self) -> int:
@@ -30,7 +30,7 @@ class KVStoreDict:
         self.kvstore = KVStore(addr)
 
     def __getitem__(self, key: str) -> str:
-        return self.kvstore[key]
+        return self.kvstore.get(key)
 
     def __setitem__(self, key: str, value: str) -> int:
         while True:
