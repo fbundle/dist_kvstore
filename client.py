@@ -1,4 +1,5 @@
 import json
+import sys
 
 import requests
 
@@ -9,14 +10,14 @@ class KVStore:
     def __getitem__(self, key: str) -> str:
         res = requests.get(f"{self.addr}/{key}")
         if res.status_code != 200:
-            print(f"Error: {res.text}")
+            print(f"Error: {res.status_code} {res.text}", file=sys.stderr)
             return ""
         return res.text
 
     def __setitem__(self, key: str, value: str = ""):
         res = requests.post(f"{self.addr}/{key}", data=value)
         if res.status_code != 200:
-            print(f"Error: {res.text}")
+            print(f"Error: {res.status_code} {res.text}", file=sys.stderr)
             return ""
         return res.text
 
@@ -27,7 +28,7 @@ class KVStore:
     def keys(self) -> list[str]:
         res = requests.get(f"{self.addr}/")
         if res.status_code != 200:
-            print(f"Error: {res.text}")
+            print(f"Error: {res.status_code} {res.text}", file=sys.stderr)
             return []
         return json.loads(res.text)
 
