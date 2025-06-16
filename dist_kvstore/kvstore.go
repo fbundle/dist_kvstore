@@ -141,7 +141,7 @@ func (ds *store) RunLoop() error {
 			case <-ds.updateCtx.Done():
 				return
 			case <-ticker.C:
-				paxos.Update(ds.acceptor, ds.rpcList).Next()
+				paxos.Update(ds.acceptor, ds.rpcList)
 			}
 		}
 
