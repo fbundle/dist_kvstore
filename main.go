@@ -67,10 +67,9 @@ func main() {
 	wg := sync.WaitGroup{}
 	for i := 0; i < n; i++ {
 		wg.Add(1)
-		go func() {
+		go func(i int) {
 			defer wg.Done()
 			for j := 0; j < 5; j++ {
-				i, j := i, j
 				v := fmt.Sprintf("value%d", i+3*j)
 				for {
 					// 1. update the acceptor
@@ -86,7 +85,7 @@ func main() {
 					// time.Sleep(time.Duration(rand.Int()%100) * time.Millisecond)
 				}
 			}
-		}()
+		}(i)
 	}
 
 	wg.Wait()
