@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net"
@@ -21,6 +22,7 @@ func TCPTransport(addr string) TransportFunc {
 		}
 		defer conn.Close()
 		conn.Write(input)
+		conn.Write([]byte("\n")) // "\n" notify end of input
 		output, err = io.ReadAll(conn)
 		return output, err
 	}
@@ -57,11 +59,11 @@ func (s *tcpServer) Append(name string, h any) TCPServer {
 
 func (s *tcpServer) handleConn(conn net.Conn) {
 	defer conn.Close()
-	b, err := io.ReadAll(conn)
+	msg, err := bufio.NewReader(conn).ReadString('\n')
 	if err != nil {
-		fmt.Println(err)
 		return
 	}
+	b := []byte(msg)
 	{
 		s.mu.Lock()
 		defer s.mu.Unlock()
