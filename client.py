@@ -1,5 +1,6 @@
 import json
 import sys
+from typing import Iterator
 
 import requests
 
@@ -35,5 +36,13 @@ class KVStore:
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(keys:{self.keys()})"
 
+    def values(self) -> Iterator[str]:
+        for k in self.keys():
+            yield self.__getitem__(k)
+
+    def items(self) -> Iterator[tuple[str, str]]:
+        for k in self.keys():
+            yield k, self.__getitem__(k)
+
     def __dict__(self) -> dict[str, str]:
-        return {k: self.__getitem__(k) for k in self.keys()}
+        return dict(self.items())
