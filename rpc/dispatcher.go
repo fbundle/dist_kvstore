@@ -1,4 +1,4 @@
-package dispatcher
+package rpc
 
 import (
 	"encoding/json"
@@ -49,4 +49,21 @@ func (d *Dispatcher) Handle(input []byte) (output []byte, err error) {
 		return nil, err
 	}
 	return output, nil
+}
+
+func (d *Dispatcher) Append(name string, h any) *Dispatcher {
+	hv := reflect.ValueOf(h)
+	ht := hv.Type()
+	if ht.Kind() != reflect.Func || ht.NumIn() != 1 || ht.NumOut() != 1 {
+		panic("handler must be of form func(*SomeRequest) *SomeResponse")
+	}
+	arg := ht.In(0)
+	if arg.Kind() != reflect.Ptr || ht.Out(0).Kind() != reflect.Ptr {
+		panic("handler arguments and return type must be pointers")
+	}
+	d.handlerMap[name] = handler{
+		handlerFunc: hv,
+		argType:     arg,
+	}
+	return d
 }

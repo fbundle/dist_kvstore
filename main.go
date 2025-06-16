@@ -7,9 +7,9 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/khanh101/paxos/dispatcher"
 	"github.com/khanh101/paxos/kvstore"
 	"github.com/khanh101/paxos/paxos"
+	"github.com/khanh101/paxos/rpc"
 )
 
 func testLocal() {
@@ -113,8 +113,7 @@ func testLocal() {
 	return
 }
 
-func main() {
-
+func testRPC() {
 	type AddReq struct {
 		Values []int
 	}
@@ -132,9 +131,9 @@ func main() {
 		Diff int
 	}
 
-	d := dispatcher.NewDispatcher()
+	d := rpc.NewDispatcher()
 
-	d.AddHandler("add", func(req *AddReq) (res *AddRes) {
+	d.Append("add", func(req *AddReq) (res *AddRes) {
 		sum := 0
 		for _, v := range req.Values {
 			sum += v
@@ -142,21 +141,22 @@ func main() {
 		return &AddRes{
 			Sum: sum,
 		}
-	})
-	d.AddHandler("sub", func(req *SubReq) (res *SubRes) {
+	}).Append("sub", func(req *SubReq) (res *SubRes) {
 		return &SubRes{
 			Diff: req.A - req.B,
 		}
 	})
+
+	localTransport := func(data []byte) ([]byte, error) {
+		// local
+		out, err := d.Handle(data)
+		return out, err
+	}
 	{
-		res, err := dispatcher.RemoteCall[*AddReq, *AddRes](
+		res, err := rpc.RPC[AddReq, AddRes](
+			localTransport,
 			"add",
 			&AddReq{Values: []int{1, 2, 3}},
-			func(data []byte) ([]byte, error) {
-				// local
-				out := d.Handle(data)
-				return out, nil
-			},
 		)
 		if err != nil {
 			panic(err)
@@ -164,19 +164,18 @@ func main() {
 		fmt.Println(res)
 	}
 	{
-		res, err := dispatcher.RemoteCall[*SubReq, *SubRes](
+		res, err := rpc.RPC[SubReq, SubRes](
+			localTransport,
 			"sub",
 			&SubReq{A: 20, B: 16},
-			func(data []byte) ([]byte, error) {
-				// local
-				out := d.Handle(data)
-				return out, nil
-			},
 		)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println(res)
 	}
+}
 
+func main() {
+	testRPC()
 }
