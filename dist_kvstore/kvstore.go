@@ -1,11 +1,13 @@
 package dist_kvstore
 
 import (
+	"context"
 	"github.com/dgraph-io/badger/v4"
 	"github.com/khanh101/paxos/kvstore"
 	"github.com/khanh101/paxos/paxos"
 	"github.com/khanh101/paxos/rpc"
 	"sync"
+	"time"
 )
 
 type Store interface {
@@ -39,6 +41,8 @@ type store struct {
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
 	writeMu      sync.Mutex
+	updateCtx    context.Context
+	updateCancel context.CancelFunc
 }
 
 func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
@@ -105,6 +109,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		}
 	}
 
+	updateCtx, updateCancel := context.WithCancel(context.Background())
 	return &store{
 		id:           paxos.NodeId(id),
 		peerAddrList: peerAddrList,
@@ -114,16 +119,31 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		server:       server,
 		rpcList:      rpcList,
 		writeMu:      sync.Mutex{},
+		updateCtx:    updateCtx,
+		updateCancel: updateCancel,
 	}, nil
 }
 
 func (ds *store) Close() error {
+	ds.updateCancel()
 	err1 := ds.db.Close()
 	err2 := ds.server.Close()
 	return combineErrors(err1, err2)
 }
 
 func (ds *store) RunLoop() error {
+	go func() {
+		for {
+			select {
+			case <-ds.updateCtx.Done():
+				return
+			default:
+			}
+			paxos.Update(ds.acceptor, ds.rpcList).Next()
+			time.Sleep(100 * time.Millisecond) // update every 100 milliseconds
+		}
+
+	}()
 	return ds.server.RunLoop()
 }
 
