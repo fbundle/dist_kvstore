@@ -13,6 +13,7 @@ import (
 const (
 	BACKOFF_MIN_TIME = 10 * time.Millisecond
 	BACKOFF_MAX_TIME = 1000 * time.Millisecond
+	UPDATE_INTERVAL  = 100 * time.Millisecond
 )
 
 type Store interface {
@@ -132,7 +133,7 @@ func (ds *store) Close() error {
 
 func (ds *store) ListenAndServeRPC() error {
 	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(UPDATE_INTERVAL)
 		defer ticker.Stop()
 		for {
 			select {
