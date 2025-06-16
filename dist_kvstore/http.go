@@ -1,6 +1,7 @@
 package dist_kvstore
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -16,11 +17,13 @@ func HttpHandle(ds Store) http.HandlerFunc {
 		}
 		if len(key) == 0 {
 			keys := ds.Keys()
-			for _, k := range keys {
-				_, err := w.Write([]byte(k + "\n"))
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-				}
+			b, err := json.Marshal(keys)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			_, err = w.Write(b)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 			return
 		}
