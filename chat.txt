@@ -1546,8 +1546,6 @@ go run main.go conf/kvstore.json 2
 curl http://localhost:4000/kvstore/ -X GET
 # read
 curl http://localhost:4000/kvstore/<key> -X GET
-# write new key 
-curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "<value>", "ver": 1}'
 # update key 
 curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "<value>", "ver": <ver>}'
 # delete key
