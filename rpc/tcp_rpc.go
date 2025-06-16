@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 type TCPServer interface {
@@ -22,6 +23,12 @@ func TCPTransport(addr string) TransportFunc {
 			return nil, err
 		}
 		defer conn.Close()
+
+		err = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		if err != nil {
+			return
+		}
+
 		conn.Write(input)
 		conn.Write([]byte("\n")) // '\n' notifies end of input
 		output, err = io.ReadAll(conn)
@@ -64,6 +71,11 @@ func (s *tcpServer) Append(name string, h any) TCPServer {
 
 func (s *tcpServer) handleConn(conn net.Conn) {
 	defer conn.Close()
+	err := conn.SetDeadline(time.Now().Add(10 * time.Second))
+	if err != nil {
+		return
+	}
+
 	msg, err := bufio.NewReader(conn).ReadString('\n') // read until '\n'
 	if err != nil {
 		return
