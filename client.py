@@ -19,7 +19,6 @@ class KVStore:
     def next_token(self) -> int:
         return int(make_request("GET", self.addr, "kvstore_next").text)
 
-
     def set(self, token: int, key: str, value: str = ""):
         return make_request("PUT", self.addr, f"kvstore/{key}?token={token}", data=value)
 
