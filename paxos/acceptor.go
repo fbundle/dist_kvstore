@@ -22,6 +22,7 @@ func NewAcceptor[T any](smallestUnapplied LogId, log kvstore.Store[LogId, Promis
 		acceptor: &simpleAcceptor[T]{
 			log: log,
 		},
+		snapshot:          smallestUnapplied - 1,
 		smallestUnapplied: smallestUnapplied,
 		subscriberPool:    subscriber.NewPool[StateMachine[T]](),
 	}).updateLocalCommitWithoutLock()
@@ -31,6 +32,7 @@ func NewAcceptor[T any](smallestUnapplied LogId, log kvstore.Store[LogId, Promis
 type acceptor[T any] struct {
 	mu                sync.Mutex
 	acceptor          *simpleAcceptor[T]
+	snapshot          LogId
 	smallestUnapplied LogId
 	subscriberPool    subscriber.SubscriberPool[StateMachine[T]]
 }
@@ -52,7 +54,7 @@ func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
 func (a *acceptor[T]) Subscribe(sm StateMachine[T]) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for logId := LogId(0); logId < a.smallestUnapplied; logId++ {
+	for logId := a.snapshot; logId < a.smallestUnapplied; logId++ {
 		sm(logId, a.acceptor.get(logId).Value)
 	}
 	return a.subscriberPool.Subscribe(sm)
