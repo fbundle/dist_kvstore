@@ -161,6 +161,8 @@ func LogCompact[T any](rpcList []RPC) {
 	// TODO
 	// 1. send request to get smallest logId
 	// 2. emit log compaction request
-	// 3. compact log entries [0, 1, 2, 3, ...] -> [x, 2, 3, ...] where x store the state machine
-	// 4. StateMachine has Recover method to recover from x instead of 0
+	// 3. T is a sum type of Command CompressedCommand.
+	//    compact log entries [0, 1, 2, 3, ...] -> [x, 2, 3, ...]
+	//    where x stores CompressedCommand
+	// 4. StateMachine applies CompressedCommand is recovering from snapshot
 }
