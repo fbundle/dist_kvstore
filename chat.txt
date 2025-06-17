@@ -443,7 +443,47 @@ func (m *memStore[K, V]) Set(k K, v V) {
 func (m *memStore[K, V]) Del(k K) {
 	delete(m.store, k)
 }
-./rpc/dispatcher.go
+./subscriber/pool.go
+package subscriber
+
+import (
+	"sync"
+)
+
+type SubscriberPool[T any] interface {
+	Subscribe(T)func()
+	Iterate(func(T) bool)
+}
+
+type subscriberPool[T any] struct {
+	mu sync.RWMutex
+	count uint
+	pool map[uint]T
+}
+
+func (p *subscriberPool[T]) Subscribe(t T) func() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	count := p.count
+	p.count++
+	p.pool[count] = t
+	return func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		delete(p.pool, count)
+	}
+}
+
+func (p *subscriberPool[T]) Iterate(f func(t T) bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	for _, t := range p.pool {
+		ok := f(t)
+		if !ok {
+			break
+		}
+	}
+}./rpc/dispatcher.go
 package rpc
 
 import (
@@ -1016,6 +1056,11 @@ import (
 	"github.com/khanh101/paxos/kvstore"
 )
 
+type Machine[CT any, T any] interface {
+	Recover(c CT) Machine[CT, T]
+	Apply(v T) Machine[CT, T]
+}
+
 type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
@@ -1029,9 +1074,10 @@ func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 		acceptor: &simpleAcceptor[T]{
 			log: log,
 		},
-		smallestUnapplied: 0,
-		subscriberCount:   0,
-		subscriberMap:     make(map[uint64]func(logId LogId, value T)),
+		smallestUncompressed: 0,
+		smallestUnapplied:    0,
+		subscriberCount:      0,
+		subscriberMap:        make(map[uint64]func(logId LogId, value T)),
 	}).updateLocalCommitWithoutLock()
 }
 

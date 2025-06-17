@@ -6,6 +6,11 @@ import (
 	"github.com/khanh101/paxos/kvstore"
 )
 
+type Machine[CT any, T any] interface {
+	Recover(c CT) Machine[CT, T]
+	Apply(v T) Machine[CT, T]
+}
+
 type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
@@ -19,9 +24,10 @@ func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 		acceptor: &simpleAcceptor[T]{
 			log: log,
 		},
-		smallestUnapplied: 0,
-		subscriberCount:   0,
-		subscriberMap:     make(map[uint64]func(logId LogId, value T)),
+		smallestUncompressed: 0,
+		smallestUnapplied:    0,
+		subscriberCount:      0,
+		subscriberMap:        make(map[uint64]func(logId LogId, value T)),
 	}).updateLocalCommitWithoutLock()
 }
 
