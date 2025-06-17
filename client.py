@@ -1,6 +1,7 @@
 import json
 import time
 from typing import Iterator
+import random
 
 import pydantic
 import requests
@@ -43,9 +44,7 @@ class KVStoreDict:
                 self.kvstore.set(key, val, self.kvstore.get(key).ver + 1)
                 return
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code != 409:
-                    raise
-                time.sleep(wait)
+                time.sleep(wait * random.random())
                 wait *= 2
 
     def keys(self) -> list[str]:
