@@ -13,7 +13,7 @@ type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
 	Handle(req Request) (res Response)
-	Subscribe(subscriber StateMachine[T]) (cancel func())
+	Subscribe(sm StateMachine[T]) (cancel func())
 }
 
 func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
