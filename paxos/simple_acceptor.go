@@ -7,6 +7,8 @@ import (
 // ProposalNumber - roundId * 4294967296 + nodeId
 type ProposalNumber uint64
 
+type LogId uint64
+
 const (
 	INITIAL   ProposalNumber = 0
 	COMMITTED ProposalNumber = 18446744073709551615
@@ -22,8 +24,6 @@ func zero[T any]() T {
 	var v T
 	return v
 }
-
-type LogId int
 
 type simpleAcceptor[T any] struct {
 	log kvstore.Store[LogId, Promise[T]]
