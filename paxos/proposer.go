@@ -87,9 +87,9 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		if _, committed := a.GetValue(logId); committed {
 			return zero[T](), false
 		}
-		var maxValue T
-		var maxProposal ProposalNumber
-		var okCount int
+		var maxValue T                 // non-nil value assigned with maximal proposal number
+		var maxProposal ProposalNumber // maximal promised proposal number on all acceptors - used to choose the next proposal number
+		var okCount int                // number of acceptors promised to this request
 		// prepare
 		maxValue, maxProposal, okCount = func() (T, ProposalNumber, int) {
 			resList := broadcast[*PrepareRequest, *PrepareResponse[T]](rpcList, &PrepareRequest{
