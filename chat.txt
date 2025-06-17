@@ -1123,9 +1123,15 @@ import (
 type StateMachine[T any] func(logId LogId, value T)
 
 type Acceptor[T any] interface {
+	// Get - get log entry
 	Get(logId LogId) (val T, ok bool)
+	// Next - get smallestUnapplied - used to propose
 	Next() LogId
-	Handle(req Request) (res Response)
+	// HandleRPC - handle RPC requests
+	HandleRPC(req Request) (res Response)
+	// Subscribe - subscribe a state machine to log
+	// smallestUnapplied is the index when state machine will start getting updates
+	// it ignores all previous log entries
 	Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func())
 }
 
@@ -1160,9 +1166,6 @@ func (a *acceptor[T]) applyCommitWithoutLock() *acceptor[T] {
 	return a
 }
 
-// Subscribe - subscribe a state machine to log
-// smallestUnapplied is the index when state machine will start getting updates
-// it ignores all previous log entries
 func (a *acceptor[T]) Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -1192,7 +1195,7 @@ func (a *acceptor[T]) Next() LogId {
 	return a.applyCommitWithoutLock().smallestUnapplied
 }
 
-func (a *acceptor[T]) Handle(r Request) Response {
+func (a *acceptor[T]) HandleRPC(r Request) Response {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	switch req := r.(type) {
