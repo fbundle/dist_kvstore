@@ -41,3 +41,10 @@ type PollRequest struct {
 type PollResponse[T any] struct {
 	Promise Promise[T] `json:"promise"`
 }
+
+type SnapshotRequest struct {
+	LogId LogId `json:"log_id"`
+}
+
+type SnapshotResponse struct {
+}

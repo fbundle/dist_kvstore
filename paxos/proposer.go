@@ -61,6 +61,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 		if !commited {
 			break
 		}
+		// TODO check if every is committed - if yes, trigger snapshot request
 		a.Handle(&CommitRequest[T]{
 			LogId: logId,
 			Value: v,
@@ -168,7 +169,7 @@ func LogCompact[T any](rpcList []RPC) {
 	// 5. initLogId is used to restore the StateMachine
 
 	/*
-		
-	*/
+
+	 */
 	// compressLog[T any](ts ...T) T // type signature for log compression where T is type of value
 }
