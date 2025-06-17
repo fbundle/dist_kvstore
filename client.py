@@ -35,7 +35,10 @@ class KVStoreDict:
         self.kvstore = KVStore(addr)
 
     def __getitem__(self, key: str) -> Any:
-        return json.loads(self.kvstore.get(key).val)
+        val = self.kvstore.get(key).val
+        if len(val) == 0:
+            return None
+        return json.loads(val)
 
     def __setitem__(self, key: str, val: Any):
         if val is None:

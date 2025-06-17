@@ -23,7 +23,7 @@ func zero[T any]() T {
 	return v
 }
 
-type LogId int64
+type LogId int
 
 type simpleAcceptor[T any] struct {
 	log kvstore.Store[LogId, Promise[T]]
