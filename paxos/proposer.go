@@ -97,7 +97,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 				Proposal: proposal,
 			})
 
-			maxValuePtr := zero[*T]()
+			maxValuePtr := (*T)(nil)
 			maxProposal := ProposalNumber(0)
 			okCount := 0
 			for _, res := range resList {
