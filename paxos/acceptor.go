@@ -22,7 +22,7 @@ func NewAcceptor[T any](smallestUnapplied LogId, log kvstore.Store[LogId, Promis
 		snapshot:          smallestUnapplied - 1,
 		smallestUnapplied: smallestUnapplied,
 		subsciber:         nil,
-	}).updateLocalCommitWithoutLock()
+	}).applyCommitWithoutLock()
 }
 
 // acceptor - paxos acceptor must be persistent
@@ -34,7 +34,7 @@ type acceptor[T any] struct {
 	subsciber         StateMachine[T]
 }
 
-func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
+func (a *acceptor[T]) applyCommitWithoutLock() *acceptor[T] {
 	for {
 		promise := a.acceptor.get(a.smallestUnapplied)
 		if promise.Proposal != COMMITTED {
@@ -77,8 +77,9 @@ func (a *acceptor[T]) Get(logId LogId) (T, bool) {
 func (a *acceptor[T]) Next() LogId {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.updateLocalCommitWithoutLock().smallestUnapplied
+	return a.applyCommitWithoutLock().smallestUnapplied
 }
+
 func (a *acceptor[T]) Handle(r Request) Response {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -97,7 +98,7 @@ func (a *acceptor[T]) Handle(r Request) Response {
 		}
 	case *CommitRequest[T]:
 		a.acceptor.commit(req.LogId, req.Value)
-		a.updateLocalCommitWithoutLock()
+		a.applyCommitWithoutLock()
 		return nil
 	case *PollRequest:
 		promise := a.acceptor.get(req.LogId)
