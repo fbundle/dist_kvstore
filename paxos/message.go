@@ -10,12 +10,12 @@ type PrepareRequest struct {
 	Proposal ProposalNumber `json:"proposal"`
 }
 
-type PrepareResponse struct {
+type PrepareResponse[T comparable] struct {
 	Proposal ProposalNumber `json:"proposal"`
-	Ok       bool           `json:"ok"`
+	Value    *T             `json:"value"`
 }
 
-type AcceptRequest[T any] struct {
+type AcceptRequest[T comparable] struct {
 	LogId    LogId          `json:"log_id"`
 	Proposal ProposalNumber `json:"proposal"`
 	Value    T              `json:"value"`
@@ -23,7 +23,6 @@ type AcceptRequest[T any] struct {
 
 type AcceptResponse struct {
 	Proposal ProposalNumber `json:"proposal"`
-	Ok       bool           `json:"ok"`
 }
 
 type CommitRequest[T any] struct {
@@ -39,5 +38,6 @@ type PollRequest struct {
 }
 
 type PollResponse[T any] struct {
-	Promise Promise[T] `json:"promise"`
+	Proposal ProposalNumber `json:"proposal"`
+	Value    *T             `json:"value"`
 }

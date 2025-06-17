@@ -52,8 +52,8 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 		for _, res := range broadcast[*PollRequest, *PollResponse[T]](rpcList, &PollRequest{
 			LogId: logId,
 		}) {
-			if res.Promise.Proposal == COMMITTED {
-				v = res.Promise.Value
+			if res.Proposal == COMMITTED {
+				v = *res.Value
 				commited = true
 				break
 			}
@@ -70,7 +70,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 }
 
 // Write - write new value
-func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC) bool {
+func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []RPC) bool {
 	n := len(rpcList)
 	proposal := compose(0, id)
 	wait := BACKOFF_MIN_TIME
@@ -88,72 +88,82 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 			return false
 		}
 		// prepare
+		var maxValue T
+		var maxProposal ProposalNumber
+		var okCount int
 		{
-			resList := broadcast[*PrepareRequest, *PrepareResponse](rpcList, &PrepareRequest{
+			resList := broadcast[*PrepareRequest, *PrepareResponse[T]](rpcList, &PrepareRequest{
 				LogId:    logId,
 				Proposal: proposal,
 			})
-			okCount := 0
-			for _, res := range resList {
-				if res.Ok {
-					okCount++
-				}
-			}
-			if okCount < quorum(n) {
-				// update proposal
-				maxRound := uint64(0)
+
+			maxValue, maxProposal, okCount = func() (T, ProposalNumber, int) {
+				maxValue := zero[*T]()
+				maxProposal := ProposalNumber(0)
+				okCount := 0
 				for _, res := range resList {
-					round, _ := decompose(res.Proposal)
-					if maxRound < round {
-						maxRound = round
+					if res.Proposal == proposal {
+						okCount++
+					}
+					if maxProposal < res.Proposal {
+						maxProposal = res.Proposal
+						maxValue = res.Value
 					}
 				}
-				proposal = compose(maxRound+1, id)
-				backoff()
-				continue
-			}
+				if maxValue == nil {
+					maxValue = &x
+				}
+				return *maxValue, maxProposal, okCount
+			}()
+		}
+
+		if okCount < quorum(n) {
+			maxRound, _ := decompose(maxProposal)
+			proposal = compose(maxRound+1, id)
+			backoff()
+			continue
 		}
 		// accept
 		{
 			resList := broadcast[*AcceptRequest[T], *AcceptResponse](rpcList, &AcceptRequest[T]{
 				LogId:    logId,
 				Proposal: proposal,
-				Value:    value,
+				Value:    maxValue,
 			})
-			okCount := 0
-			for _, res := range resList {
-				if res.Ok {
-					okCount++
-				}
-			}
-			if okCount < quorum(n) {
-				// update proposal
-				maxRound := uint64(0)
+			maxProposal, okCount = func() (ProposalNumber, int) {
+				maxProposal := ProposalNumber(0)
+				okCount := 0
 				for _, res := range resList {
-					round, _ := decompose(res.Proposal)
-					if maxRound < round {
-						maxRound = round
+					if res.Proposal == proposal {
+						okCount++
+					}
+					if maxProposal < res.Proposal {
+						maxProposal = res.Proposal
 					}
 				}
-				proposal = compose(maxRound+1, id)
-				backoff()
-				continue
-			}
+				return maxProposal, okCount
+			}()
+		}
+		if okCount < quorum(n) {
+			maxRound, _ := decompose(maxProposal)
+			proposal = compose(maxRound+1, id)
+			backoff()
+			continue
 		}
 		// commit
 		{
 			// broadcast commit
 			go broadcast[*CommitRequest[T], *CommitResponse](rpcList, &CommitRequest[T]{
 				LogId: logId,
-				Value: value,
+				Value: maxValue,
 			})
 			// local commit
 			a.HandleRPC(&CommitRequest[T]{
 				LogId: logId,
-				Value: value,
+				Value: maxValue,
 			})
 		}
-		return true
+		return maxValue == x
 	}
 }
 

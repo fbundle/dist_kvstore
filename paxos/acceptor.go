@@ -21,7 +21,7 @@ type Acceptor[T any] interface {
 	Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func())
 }
 
-func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+func NewAcceptor[T comparable](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 	return (&acceptor[T]{
 		mu:                sync.Mutex{},
 		acceptor:          &simpleAcceptor[T]{log: log},
@@ -31,7 +31,7 @@ func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 }
 
 // acceptor - paxos acceptor must be persistent
-type acceptor[T any] struct {
+type acceptor[T comparable] struct {
 	mu                sync.Mutex
 	acceptor          *simpleAcceptor[T]
 	smallestUnapplied LogId
@@ -40,12 +40,12 @@ type acceptor[T any] struct {
 
 func (a *acceptor[T]) applyCommitWithoutLock() *acceptor[T] {
 	for {
-		promise := a.acceptor.get(a.smallestUnapplied)
-		if promise.Proposal != COMMITTED {
+		proposal, value := a.acceptor.get(a.smallestUnapplied)
+		if proposal != COMMITTED {
 			break
 		}
 		if a.subsciber != nil {
-			a.subsciber(a.smallestUnapplied, promise.Value)
+			a.subsciber(a.smallestUnapplied, *value)
 		}
 		a.smallestUnapplied++
 	}
@@ -71,8 +71,11 @@ func (a *acceptor[T]) Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (ca
 func (a *acceptor[T]) GetValue(logId LogId) (T, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	promise := a.acceptor.get(logId)
-	return promise.Value, promise.Proposal == COMMITTED
+	proposal, value := a.acceptor.get(logId)
+	if proposal == COMMITTED {
+		return *value, true
+	}
+	return zero[T](), false
 }
 
 func (a *acceptor[T]) Next() LogId {
@@ -86,25 +89,25 @@ func (a *acceptor[T]) HandleRPC(r Request) Response {
 	defer a.mu.Unlock()
 	switch req := r.(type) {
 	case *PrepareRequest:
-		proposal, ok := a.acceptor.prepare(req.LogId, req.Proposal)
-		return &PrepareResponse{
+		proposal, value := a.acceptor.prepare(req.LogId, req.Proposal)
+		return &PrepareResponse[T]{
 			Proposal: proposal,
-			Ok:       ok,
+			Value:    value,
 		}
 	case *AcceptRequest[T]:
-		proposal, ok := a.acceptor.accept(req.LogId, req.Proposal, req.Value)
+		proposal := a.acceptor.accept(req.LogId, req.Proposal, req.Value)
 		return &AcceptResponse{
 			Proposal: proposal,
-			Ok:       ok,
 		}
 	case *CommitRequest[T]:
 		a.acceptor.commit(req.LogId, req.Value)
 		a.applyCommitWithoutLock()
 		return nil
 	case *PollRequest:
-		promise := a.acceptor.get(req.LogId)
+		proposal, value := a.acceptor.get(req.LogId)
 		return &PollResponse[T]{
-			Promise: promise,
+			Proposal: proposal,
+			Value:    value,
 		}
 	default:
 		return nil

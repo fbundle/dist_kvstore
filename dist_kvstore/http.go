@@ -58,13 +58,9 @@ func HttpHandle(ds Store) http.HandlerFunc {
 				return
 			}
 			cmd := Cmd{
-				Entries: []Entry{
-					{
-						Key: key,
-						Val: v.Val,
-						Ver: v.Ver,
-					},
-				},
+				Key: key,
+				Val: v.Val,
+				Ver: v.Ver,
 			}
 
 			ds.Set(cmd)

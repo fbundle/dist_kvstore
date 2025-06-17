@@ -76,7 +76,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		return nil, err
 	}
 	server = server.
-		Register("prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse](acceptor)).
+		Register("prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](acceptor)).
 		Register("accept", makeHandlerFunc[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](acceptor)).
 		Register("commit", makeHandlerFunc[paxos.CommitRequest[Cmd], paxos.CommitResponse](acceptor)).
 		Register("poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[Cmd]](acceptor))
@@ -94,7 +94,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 				res, err := func() (paxos.Response, error) {
 					switch req.(type) {
 					case *paxos.PrepareRequest:
-						return rpc.RPC[paxos.PrepareRequest, paxos.PrepareResponse](transport, "prepare", req.(*paxos.PrepareRequest))
+						return rpc.RPC[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](transport, "prepare", req.(*paxos.PrepareRequest))
 					case *paxos.AcceptRequest[Cmd]:
 						return rpc.RPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[Cmd]))
 					case *paxos.CommitRequest[Cmd]:

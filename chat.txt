@@ -293,6 +293,812 @@ func testRPCTCP() {
 func main() {
 	testRPC()
 }
+./dist_kvstore/kvstore.go
+package dist_kvstore
+
+import (
+	"context"
+	"math/rand"
+	"sync"
+	"time"
+
+	"github.com/dgraph-io/badger/v4"
+	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/paxos"
+	"github.com/khanh101/paxos/rpc"
+)
+
+const (
+	BACKOFF_MIN_TIME = 10 * time.Millisecond
+	BACKOFF_MAX_TIME = 1000 * time.Millisecond
+	UPDATE_INTERVAL  = 100 * time.Millisecond
+)
+
+type Store interface {
+	Close() error
+	ListenAndServeRPC() error
+	Get(key string) Entry
+	Set(Cmd)
+	Keys() []string
+}
+
+func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[Cmd]) func(*Req) *Res {
+	return func(req *Req) *Res {
+		res := acceptor.HandleRPC(req)
+		if res == nil {
+			return nil
+		}
+		return res.(*Res)
+	}
+}
+
+type store struct {
+	id           paxos.NodeId
+	peerAddrList []string
+	db           *badger.DB
+	memStore     *stateMachine
+	acceptor     paxos.Acceptor[Cmd]
+	server       rpc.TCPServer
+	rpcList      []paxos.RPC
+	writeMu      sync.Mutex
+	updateCtx    context.Context
+	updateCancel context.CancelFunc
+}
+
+func getDefaultEntry(txn kvstore.Txn[string, Entry], key string) Entry {
+	entry, ok := txn.Get(key)
+	if !ok {
+		return Entry{
+			Key: key,
+			Val: "",
+			Ver: 0,
+		}
+	}
+	return entry
+}
+
+func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
+	bindAddr := peerAddrList[id]
+	db, err := badger.Open(badger.DefaultOptions(badgerPath))
+	if err != nil {
+		return nil, err
+	}
+	acceptor := paxos.NewAcceptor(kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
+	memStore := newStateMachine()
+	acceptor.Subscribe(0, memStore.Apply)
+
+	server, err := rpc.NewTCPServer(bindAddr)
+	if err != nil {
+		return nil, err
+	}
+	server = server.
+		Register("prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](acceptor)).
+		Register("accept", makeHandlerFunc[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](acceptor)).
+		Register("commit", makeHandlerFunc[paxos.CommitRequest[Cmd], paxos.CommitResponse](acceptor)).
+		Register("poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[Cmd]](acceptor))
+
+	rpcList := make([]paxos.RPC, len(peerAddrList))
+	for i := range peerAddrList {
+		i := i
+		if i == id {
+			rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
+				resCh <- acceptor.HandleRPC(req)
+			}
+		} else {
+			rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
+				transport := rpc.TCPTransport(peerAddrList[i])
+				res, err := func() (paxos.Response, error) {
+					switch req.(type) {
+					case *paxos.PrepareRequest:
+						return rpc.RPC[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](transport, "prepare", req.(*paxos.PrepareRequest))
+					case *paxos.AcceptRequest[Cmd]:
+						return rpc.RPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[Cmd]))
+					case *paxos.CommitRequest[Cmd]:
+						return rpc.RPC[paxos.CommitRequest[Cmd], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[Cmd]))
+					case *paxos.PollRequest:
+						return rpc.RPC[paxos.PollRequest, paxos.PollResponse[Cmd]](transport, "poll", req.(*paxos.PollRequest))
+					default:
+						return nil, nil
+					}
+				}()
+				if err != nil {
+					res = nil
+				}
+				resCh <- res
+			}
+		}
+	}
+
+	updateCtx, updateCancel := context.WithCancel(context.Background())
+	return &store{
+		id:           paxos.NodeId(id),
+		peerAddrList: peerAddrList,
+		db:           db,
+		memStore:     memStore,
+		acceptor:     acceptor,
+		server:       server,
+		rpcList:      rpcList,
+		writeMu:      sync.Mutex{},
+		updateCtx:    updateCtx,
+		updateCancel: updateCancel,
+	}, nil
+}
+
+func (ds *store) Close() error {
+	ds.updateCancel()
+	err1 := ds.db.Close()
+	err2 := ds.server.Close()
+	return combineErrors(err1, err2)
+}
+
+func (ds *store) ListenAndServeRPC() error {
+	go func() {
+		ticker := time.NewTicker(UPDATE_INTERVAL)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ds.updateCtx.Done():
+				return
+			case <-ticker.C:
+				paxos.Update(ds.acceptor, ds.rpcList)
+			}
+		}
+
+	}()
+	return ds.server.ListenAndServe()
+}
+
+func (ds *store) Set(cmd Cmd) {
+	ds.writeMu.Lock()
+	defer ds.writeMu.Unlock()
+	wait := BACKOFF_MIN_TIME
+	backoff := func() {
+		time.Sleep(time.Duration(rand.Intn(int(wait))))
+		wait *= 2
+		if wait > BACKOFF_MAX_TIME {
+			wait = BACKOFF_MAX_TIME
+		}
+	}
+	for {
+		logId := ds.acceptor.Next()
+		ok := paxos.Write(ds.acceptor, ds.id, logId, cmd, ds.rpcList)
+		if ok {
+			break
+		}
+		backoff()
+	}
+}
+
+func (ds *store) Get(key string) Entry {
+	return ds.memStore.Get(key)
+}
+
+func (ds *store) Keys() []string {
+	return ds.memStore.Keys()
+}
+./dist_kvstore/state_machine.go
+package dist_kvstore
+
+import (
+	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/paxos"
+)
+
+type Entry struct {
+	Key string `json:"key"`
+	Val string `json:"val"`
+	Ver uint64 `json:"ver"`
+}
+
+type Cmd = Entry
+
+type stateMachine struct {
+	store kvstore.MemStore[string, Entry]
+}
+
+func newStateMachine() *stateMachine {
+	return &stateMachine{
+		store: kvstore.NewMemStore[string, Entry](),
+	}
+}
+
+func (sm *stateMachine) Get(key string) Entry {
+	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+		return getDefaultEntry(txn, key)
+	}).(Entry)
+}
+
+func (sm *stateMachine) Keys() []string {
+	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+		return sm.store.Keys()
+	}).([]string)
+}
+
+func (sm *stateMachine) Apply(logId paxos.LogId, cmd Cmd) {
+	sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+		entry := cmd
+		oldEntry := getDefaultEntry(txn, entry.Key)
+		if entry.Ver <= oldEntry.Ver {
+			return nil // ignore update
+		}
+		if len(entry.Val) == 0 {
+			txn.Del(entry.Key)
+		} else {
+			txn.Set(entry.Key, entry)
+		}
+		return nil
+	})
+}
+./dist_kvstore/util.go
+package dist_kvstore
+
+import "fmt"
+
+func combineErrors(errs ...error) error {
+	var errorList []error
+
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		errorList = append(errorList, err)
+	}
+	if len(errorList) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%v", errorList)
+}
+./dist_kvstore/http.go
+package dist_kvstore
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
+)
+
+type versionedValue struct {
+	Val string `json:"val"`
+	Ver uint64 `json:"ver"`
+}
+
+func HttpHandle(ds Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/kvstore/") {
+			http.NotFound(w, r)
+			return
+		}
+		defer r.Body.Close()
+
+		key, _ := strings.CutPrefix(r.URL.Path, "/kvstore/")
+		if len(key) == 0 {
+			b, err := json.Marshal(ds.Keys())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			_, err = w.Write(b)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			entry := ds.Get(key)
+			b, err := json.Marshal(entry)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			_, err = w.Write(b)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		case http.MethodPost, http.MethodPut:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			v := versionedValue{}
+			err = json.Unmarshal(body, &v)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			cmd := Cmd{
+				Key: key,
+				Val: v.Val,
+				Ver: v.Ver,
+			}
+
+			ds.Set(cmd)
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.Error(w, "method must be GET POST PUT", http.StatusBadRequest)
+		}
+
+	}
+}
+./paxos/simple_acceptor.go
+package paxos
+
+import (
+	"github.com/khanh101/paxos/kvstore"
+)
+
+// ProposalNumber - roundId * 4294967296 + nodeId
+type ProposalNumber uint64
+
+type LogId uint64
+
+const (
+	INITIAL   ProposalNumber = 0
+	COMMITTED ProposalNumber = 18446744073709551615
+)
+
+// Promise - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
+type Promise[T comparable] struct {
+	Proposal ProposalNumber `json:"proposal"`
+	Value    *T             `json:"value"`
+}
+
+func zero[T any]() T {
+	var v T
+	return v
+}
+
+type simpleAcceptor[T comparable] struct {
+	log kvstore.Store[LogId, Promise[T]]
+}
+
+func getDefaultLogEntry[T comparable](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
+	v, ok := txn.Get(logId)
+	if !ok {
+		return Promise[T]{
+			Proposal: INITIAL,
+			Value:    nil,
+		}
+	}
+	return v
+}
+
+func (a *simpleAcceptor[T]) get(logId LogId) (ProposalNumber, *T) {
+	promise := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+		return getDefaultLogEntry(txn, logId)
+	}).(Promise[T])
+	return promise.Proposal, promise.Value
+}
+
+func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
+	a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+		txn.Set(logId, Promise[T]{
+			Proposal: COMMITTED,
+			Value:    &v,
+		})
+		return nil
+	})
+}
+
+func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (ProposalNumber, *T) {
+	promise := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+		p := getDefaultLogEntry(txn, logId)
+		if p.Proposal < proposal { // fulfill promise
+			p = Promise[T]{
+				Proposal: proposal,
+				Value:    p.Value,
+			}
+		}
+		txn.Set(logId, p)
+		return p
+	}).(Promise[T])
+	return promise.Proposal, promise.Value
+}
+
+func (a *simpleAcceptor[T]) accept(logId LogId, proposal ProposalNumber, value T) ProposalNumber {
+	promise := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+		p := getDefaultLogEntry(txn, logId)
+		if p.Proposal <= proposal { // fulfill promise
+			p = Promise[T]{
+				Proposal: proposal,
+				Value:    &value,
+			}
+		}
+		txn.Set(logId, p)
+		return p
+	}).(Promise[T])
+	return promise.Proposal
+}
+./paxos/acceptor.go
+package paxos
+
+import (
+	"sync"
+
+	"github.com/khanh101/paxos/kvstore"
+)
+
+type StateMachine[T any] func(logId LogId, value T)
+
+type Acceptor[T any] interface {
+	// GetValue - get value
+	GetValue(logId LogId) (val T, ok bool)
+	// Next - get smallestUnapplied - used to propose
+	Next() LogId
+	// HandleRPC - handle RPC requests
+	HandleRPC(req Request) (res Response)
+	// Subscribe - subscribe a state machine to log
+	// smallestUnapplied is the index when state machine will start getting updates
+	// it ignores all previous log entries
+	Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func())
+}
+
+func NewAcceptor[T comparable](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+	return (&acceptor[T]{
+		mu:                sync.Mutex{},
+		acceptor:          &simpleAcceptor[T]{log: log},
+		smallestUnapplied: 0,
+		subsciber:         nil,
+	}).applyCommitWithoutLock()
+}
+
+// acceptor - paxos acceptor must be persistent
+type acceptor[T comparable] struct {
+	mu                sync.Mutex
+	acceptor          *simpleAcceptor[T]
+	smallestUnapplied LogId
+	subsciber         StateMachine[T]
+}
+
+func (a *acceptor[T]) applyCommitWithoutLock() *acceptor[T] {
+	for {
+		proposal, value := a.acceptor.get(a.smallestUnapplied)
+		if proposal != COMMITTED {
+			break
+		}
+		if a.subsciber != nil {
+			a.subsciber(a.smallestUnapplied, *value)
+		}
+		a.smallestUnapplied++
+	}
+	return a
+}
+
+func (a *acceptor[T]) Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.subsciber != nil {
+		panic("cannot subscribe twice")
+	}
+	a.subsciber = sm
+	a.smallestUnapplied = smallestUnapplied
+
+	return func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		a.subsciber = nil
+	}
+}
+
+func (a *acceptor[T]) GetValue(logId LogId) (T, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	proposal, value := a.acceptor.get(logId)
+	if proposal == COMMITTED {
+		return *value, true
+	}
+	return zero[T](), false
+}
+
+func (a *acceptor[T]) Next() LogId {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.applyCommitWithoutLock().smallestUnapplied
+}
+
+func (a *acceptor[T]) HandleRPC(r Request) Response {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	switch req := r.(type) {
+	case *PrepareRequest:
+		proposal, value := a.acceptor.prepare(req.LogId, req.Proposal)
+		return &PrepareResponse[T]{
+			Proposal: proposal,
+			Value:    value,
+		}
+	case *AcceptRequest[T]:
+		proposal := a.acceptor.accept(req.LogId, req.Proposal, req.Value)
+		return &AcceptResponse{
+			Proposal: proposal,
+		}
+	case *CommitRequest[T]:
+		a.acceptor.commit(req.LogId, req.Value)
+		a.applyCommitWithoutLock()
+		return nil
+	case *PollRequest:
+		proposal, value := a.acceptor.get(req.LogId)
+		return &PollResponse[T]{
+			Proposal: proposal,
+			Value:    value,
+		}
+	default:
+		return nil
+	}
+}
+./paxos/message.go
+package paxos
+
+type Request interface {
+}
+
+type Response interface {
+}
+type PrepareRequest struct {
+	LogId    LogId          `json:"log_id"`
+	Proposal ProposalNumber `json:"proposal"`
+}
+
+type PrepareResponse[T comparable] struct {
+	Proposal ProposalNumber `json:"proposal"`
+	Value    *T             `json:"value"`
+}
+
+type AcceptRequest[T comparable] struct {
+	LogId    LogId          `json:"log_id"`
+	Proposal ProposalNumber `json:"proposal"`
+	Value    T              `json:"value"`
+}
+
+type AcceptResponse struct {
+	Proposal ProposalNumber `json:"proposal"`
+}
+
+type CommitRequest[T any] struct {
+	LogId LogId `json:"log_id"`
+	Value T     `json:"value"`
+}
+
+type CommitResponse struct {
+}
+
+type PollRequest struct {
+	LogId LogId `json:"log_id"`
+}
+
+type PollResponse[T any] struct {
+	Proposal ProposalNumber `json:"proposal"`
+	Value    *T             `json:"value"`
+}
+./paxos/proposer.go
+package paxos
+
+import (
+	"math/rand"
+	"time"
+)
+
+type NodeId uint64
+
+const (
+	PROPOSAL_STEP    ProposalNumber = 4294967296
+	BACKOFF_MIN_TIME time.Duration  = 10 * time.Millisecond
+	BACKOFF_MAX_TIME time.Duration  = 1000 * time.Millisecond
+)
+
+func decompose(proposal ProposalNumber) (uint64, NodeId) {
+	return uint64(proposal / PROPOSAL_STEP), NodeId(proposal % PROPOSAL_STEP)
+}
+func compose(round uint64, nodeId NodeId) ProposalNumber {
+	return PROPOSAL_STEP*ProposalNumber(round) + ProposalNumber(nodeId)
+}
+
+func quorum(n int) int {
+	return n/2 + 1
+}
+
+type RPC func(Request, chan<- Response)
+
+func broadcast[Req any, Res any](rpcList []RPC, req Req) []Res {
+	ch := make(chan Response, len(rpcList))
+	defer close(ch)
+	for _, rpc := range rpcList {
+		rpc(req, ch)
+	}
+	resList := make([]Res, 0, len(rpcList))
+	for range rpcList {
+		res := <-ch
+		if res == nil {
+			continue
+		}
+		resList = append(resList, res.(Res))
+	}
+	return resList
+}
+
+// Update - check if there is an update
+func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
+	for {
+		logId := a.Next()
+		commited := false
+		var v T
+		for _, res := range broadcast[*PollRequest, *PollResponse[T]](rpcList, &PollRequest{
+			LogId: logId,
+		}) {
+			if res.Proposal == COMMITTED {
+				v = *res.Value
+				commited = true
+				break
+			}
+		}
+		if !commited {
+			break
+		}
+		a.HandleRPC(&CommitRequest[T]{
+			LogId: logId,
+			Value: v,
+		})
+	}
+	return a
+}
+
+// Write - write new value
+func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []RPC) bool {
+	n := len(rpcList)
+	proposal := compose(0, id)
+	wait := BACKOFF_MIN_TIME
+	// exponential backoff
+	backoff := func() {
+		a = Update(a, rpcList)
+		time.Sleep(time.Duration(rand.Intn(int(wait))))
+		wait *= 2
+		if wait > BACKOFF_MAX_TIME {
+			wait = BACKOFF_MAX_TIME
+		}
+	}
+	for {
+		if _, committed := a.GetValue(logId); committed {
+			return false
+		}
+		// prepare
+		var maxValue T
+		var maxProposal ProposalNumber
+		var okCount int
+		{
+			resList := broadcast[*PrepareRequest, *PrepareResponse[T]](rpcList, &PrepareRequest{
+				LogId:    logId,
+				Proposal: proposal,
+			})
+
+			maxValue, maxProposal, okCount = func() (T, ProposalNumber, int) {
+				maxValue := zero[*T]()
+				maxProposal := ProposalNumber(0)
+				okCount := 0
+				for _, res := range resList {
+					if res.Proposal == proposal {
+						okCount++
+					}
+					if maxProposal < res.Proposal {
+						maxProposal = res.Proposal
+						maxValue = res.Value
+					}
+				}
+				if maxValue == nil {
+					maxValue = &x
+				}
+				return *maxValue, maxProposal, okCount
+			}()
+		}
+
+		if okCount < quorum(n) {
+			maxRound, _ := decompose(maxProposal)
+			proposal = compose(maxRound+1, id)
+			backoff()
+			continue
+		}
+		// accept
+		{
+			resList := broadcast[*AcceptRequest[T], *AcceptResponse](rpcList, &AcceptRequest[T]{
+				LogId:    logId,
+				Proposal: proposal,
+				Value:    maxValue,
+			})
+			maxProposal, okCount = func() (ProposalNumber, int) {
+				maxProposal := ProposalNumber(0)
+				okCount := 0
+				for _, res := range resList {
+					if res.Proposal == proposal {
+						okCount++
+					}
+					if maxProposal < res.Proposal {
+						maxProposal = res.Proposal
+					}
+				}
+				return maxProposal, okCount
+			}()
+		}
+		if okCount < quorum(n) {
+			maxRound, _ := decompose(maxProposal)
+			proposal = compose(maxRound+1, id)
+			backoff()
+			continue
+		}
+		// commit
+		{
+			// broadcast commit
+			go broadcast[*CommitRequest[T], *CommitResponse](rpcList, &CommitRequest[T]{
+				LogId: logId,
+				Value: maxValue,
+			})
+			// local commit
+			a.HandleRPC(&CommitRequest[T]{
+				LogId: logId,
+				Value: maxValue,
+			})
+		}
+		return maxValue == x
+	}
+}
+
+func LogCompact[T any](rpcList []RPC) {
+	// TODO
+	// 1. send request to get smallest logId
+	// 2. emit log compaction request
+	// 3. T is a sum type of Command CompressedCommand.
+	//    compact log entries [0, 1, 2, 3, ...] -> [x, 2, 3, ...]
+	//    where x stores CompressedCommand
+	// 4. StateMachine applies CompressedCommand is recovering from snapshot
+	// 5. initLogId is used to restore the StateMachine
+
+	/*
+
+	 */
+	// compressLog[T any](ts ...T) T // type signature for log compression where T is type of value
+}
+./kvstore/mem_store.go
+package kvstore
+
+import "sync"
+
+func NewMemStore[K comparable, V any]() MemStore[K, V] {
+	return &memStore[K, V]{
+		mu:    sync.Mutex{},
+		store: make(map[K]V),
+	}
+}
+
+type memStore[K comparable, V any] struct {
+	mu    sync.Mutex
+	store map[K]V
+}
+
+func (m *memStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return update(m)
+}
+
+func (m *memStore[K, V]) Keys() (keys []K) {
+	keys = make([]K, 0, len(m.store))
+	for k := range m.store {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func (m *memStore[K, V]) Get(k K) (v V, ok bool) {
+	v, ok = m.store[k]
+	return v, ok
+}
+
+func (m *memStore[K, V]) Set(k K, v V) {
+	m.store[k] = v
+}
+
+func (m *memStore[K, V]) Del(k K) {
+	delete(m.store, k)
+}
 ./kvstore/store.go
 package kvstore
 
@@ -400,49 +1206,6 @@ func (b *badgerStore[K, V]) Close() {
 	if err != nil {
 		panic(err)
 	}
-}
-./kvstore/mem_store.go
-package kvstore
-
-import "sync"
-
-func NewMemStore[K comparable, V any]() MemStore[K, V] {
-	return &memStore[K, V]{
-		mu:    sync.Mutex{},
-		store: make(map[K]V),
-	}
-}
-
-type memStore[K comparable, V any] struct {
-	mu    sync.Mutex
-	store map[K]V
-}
-
-func (m *memStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return update(m)
-}
-
-func (m *memStore[K, V]) Keys() (keys []K) {
-	keys = make([]K, 0, len(m.store))
-	for k := range m.store {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-func (m *memStore[K, V]) Get(k K) (v V, ok bool) {
-	v, ok = m.store[k]
-	return v, ok
-}
-
-func (m *memStore[K, V]) Set(k K, v V) {
-	m.store[k] = v
-}
-
-func (m *memStore[K, V]) Del(k K) {
-	delete(m.store, k)
 }
 ./subscriber/pool.go
 package subscriber
@@ -565,44 +1328,6 @@ func (d *dispatcher) Handle(input []byte) (output []byte, err error) {
 	}
 	return output, nil
 }
-./rpc/rpc.go
-package rpc
-
-import (
-	"encoding/json"
-)
-
-type TransportFunc func([]byte) ([]byte, error)
-
-func zeroPtr[T any]() *T {
-	var v T
-	return &v
-}
-
-func RPC[Req any, Res any](transport TransportFunc, name string, req *Req) (res *Res, err error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	msg := message{
-		Cmd:  name,
-		Body: body,
-	}
-	b, err := json.Marshal(msg)
-	if err != nil {
-		return nil, err
-	}
-	b, err = transport(b)
-	if err != nil {
-		return nil, err
-	}
-
-	res = zeroPtr[Res]()
-	if err := json.Unmarshal(b, res); err != nil {
-		return nil, err
-	}
-	return res, nil
-}
 ./rpc/tcp_server.go
 package rpc
 
@@ -715,785 +1440,43 @@ func (s *tcpServer) ListenAndServe() error {
 		go s.handleConn(conn)
 	}
 }
-./dist_kvstore/util.go
-package dist_kvstore
-
-import "fmt"
-
-func combineErrors(errs ...error) error {
-	var errorList []error
-
-	for _, err := range errs {
-		if err == nil {
-			continue
-		}
-		errorList = append(errorList, err)
-	}
-	if len(errorList) == 0 {
-		return nil
-	}
-	return fmt.Errorf("%v", errorList)
-}
-./dist_kvstore/state_machine.go
-package dist_kvstore
-
-import (
-	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/paxos"
-)
-
-type Entry struct {
-	Key string `json:"key"`
-	Val string `json:"val"`
-	Ver uint64 `json:"ver"`
-}
-
-type Cmd struct {
-	Entries []Entry `json:"entries"`
-}
-type stateMachine struct {
-	store kvstore.MemStore[string, Entry]
-}
-
-func newStateMachine() *stateMachine {
-	return &stateMachine{
-		store: kvstore.NewMemStore[string, Entry](),
-	}
-}
-
-func (sm *stateMachine) Get(key string) Entry {
-	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
-		return getDefaultEntry(txn, key)
-	}).(Entry)
-}
-
-func (sm *stateMachine) Keys() []string {
-	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
-		return sm.store.Keys()
-	}).([]string)
-}
-
-func (sm *stateMachine) Apply(logId paxos.LogId, cmd Cmd) {
-	sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
-		for _, entry := range cmd.Entries {
-			oldEntry := getDefaultEntry(txn, entry.Key)
-			if entry.Ver <= oldEntry.Ver {
-				continue // ignore update
-			}
-			if len(entry.Val) == 0 {
-				txn.Del(entry.Key)
-			} else {
-				txn.Set(entry.Key, entry)
-			}
-		}
-		return nil
-	})
-}
-
-func (sm *stateMachine) Snapshot() Cmd {
-	entries := sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
-		keys := sm.store.Keys()
-		entries := make([]Entry, 0, len(keys))
-		for _, k := range keys {
-			if v, ok := txn.Get(k); ok {
-				entries = append(entries, v)
-			}
-		}
-		return entries
-	}).([]Entry)
-
-	return Cmd{
-		Entries: entries,
-	}
-}
-./dist_kvstore/http.go
-package dist_kvstore
+./rpc/rpc.go
+package rpc
 
 import (
 	"encoding/json"
-	"io"
-	"net/http"
-	"strings"
 )
 
-type versionedValue struct {
-	Val string `json:"val"`
-	Ver uint64 `json:"ver"`
-}
+type TransportFunc func([]byte) ([]byte, error)
 
-func HttpHandle(ds Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/kvstore/") {
-			http.NotFound(w, r)
-			return
-		}
-		defer r.Body.Close()
-
-		key, _ := strings.CutPrefix(r.URL.Path, "/kvstore/")
-		if len(key) == 0 {
-			b, err := json.Marshal(ds.Keys())
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			_, err = w.Write(b)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-			entry := ds.Get(key)
-			b, err := json.Marshal(entry)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			_, err = w.Write(b)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		case http.MethodPost, http.MethodPut:
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			v := versionedValue{}
-			err = json.Unmarshal(body, &v)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			cmd := Cmd{
-				Entries: []Entry{
-					{
-						Key: key,
-						Val: v.Val,
-						Ver: v.Ver,
-					},
-				},
-			}
-
-			ds.Set(cmd)
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.Error(w, "method must be GET POST PUT", http.StatusBadRequest)
-		}
-
-	}
-}
-./dist_kvstore/kvstore.go
-package dist_kvstore
-
-import (
-	"context"
-	"math/rand"
-	"sync"
-	"time"
-
-	"github.com/dgraph-io/badger/v4"
-	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/paxos"
-	"github.com/khanh101/paxos/rpc"
-)
-
-const (
-	BACKOFF_MIN_TIME = 10 * time.Millisecond
-	BACKOFF_MAX_TIME = 1000 * time.Millisecond
-	UPDATE_INTERVAL  = 100 * time.Millisecond
-)
-
-type Store interface {
-	Close() error
-	ListenAndServeRPC() error
-	Get(key string) Entry
-	Set(Cmd)
-	Keys() []string
-}
-
-func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[Cmd]) func(*Req) *Res {
-	return func(req *Req) *Res {
-		res := acceptor.HandleRPC(req)
-		if res == nil {
-			return nil
-		}
-		return res.(*Res)
-	}
-}
-
-type store struct {
-	id           paxos.NodeId
-	peerAddrList []string
-	db           *badger.DB
-	memStore     *stateMachine
-	acceptor     paxos.Acceptor[Cmd]
-	server       rpc.TCPServer
-	rpcList      []paxos.RPC
-	writeMu      sync.Mutex
-	updateCtx    context.Context
-	updateCancel context.CancelFunc
-}
-
-func getDefaultEntry(txn kvstore.Txn[string, Entry], key string) Entry {
-	entry, ok := txn.Get(key)
-	if !ok {
-		return Entry{
-			Key: key,
-			Val: "",
-			Ver: 0,
-		}
-	}
-	return entry
-}
-
-func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
-	bindAddr := peerAddrList[id]
-	db, err := badger.Open(badger.DefaultOptions(badgerPath))
-	if err != nil {
-		return nil, err
-	}
-	acceptor := paxos.NewAcceptor(kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
-	memStore := newStateMachine()
-	acceptor.Subscribe(0, memStore.Apply)
-
-	server, err := rpc.NewTCPServer(bindAddr)
-	if err != nil {
-		return nil, err
-	}
-	server = server.
-		Register("prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse](acceptor)).
-		Register("accept", makeHandlerFunc[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](acceptor)).
-		Register("commit", makeHandlerFunc[paxos.CommitRequest[Cmd], paxos.CommitResponse](acceptor)).
-		Register("poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[Cmd]](acceptor))
-
-	rpcList := make([]paxos.RPC, len(peerAddrList))
-	for i := range peerAddrList {
-		i := i
-		if i == id {
-			rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
-				resCh <- acceptor.HandleRPC(req)
-			}
-		} else {
-			rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
-				transport := rpc.TCPTransport(peerAddrList[i])
-				res, err := func() (paxos.Response, error) {
-					switch req.(type) {
-					case *paxos.PrepareRequest:
-						return rpc.RPC[paxos.PrepareRequest, paxos.PrepareResponse](transport, "prepare", req.(*paxos.PrepareRequest))
-					case *paxos.AcceptRequest[Cmd]:
-						return rpc.RPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[Cmd]))
-					case *paxos.CommitRequest[Cmd]:
-						return rpc.RPC[paxos.CommitRequest[Cmd], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[Cmd]))
-					case *paxos.PollRequest:
-						return rpc.RPC[paxos.PollRequest, paxos.PollResponse[Cmd]](transport, "poll", req.(*paxos.PollRequest))
-					default:
-						return nil, nil
-					}
-				}()
-				if err != nil {
-					res = nil
-				}
-				resCh <- res
-			}
-		}
-	}
-
-	updateCtx, updateCancel := context.WithCancel(context.Background())
-	return &store{
-		id:           paxos.NodeId(id),
-		peerAddrList: peerAddrList,
-		db:           db,
-		memStore:     memStore,
-		acceptor:     acceptor,
-		server:       server,
-		rpcList:      rpcList,
-		writeMu:      sync.Mutex{},
-		updateCtx:    updateCtx,
-		updateCancel: updateCancel,
-	}, nil
-}
-
-func (ds *store) Close() error {
-	ds.updateCancel()
-	err1 := ds.db.Close()
-	err2 := ds.server.Close()
-	return combineErrors(err1, err2)
-}
-
-func (ds *store) ListenAndServeRPC() error {
-	go func() {
-		ticker := time.NewTicker(UPDATE_INTERVAL)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ds.updateCtx.Done():
-				return
-			case <-ticker.C:
-				paxos.Update(ds.acceptor, ds.rpcList)
-			}
-		}
-
-	}()
-	return ds.server.ListenAndServe()
-}
-
-func (ds *store) Set(cmd Cmd) {
-	ds.writeMu.Lock()
-	defer ds.writeMu.Unlock()
-	wait := BACKOFF_MIN_TIME
-	backoff := func() {
-		time.Sleep(time.Duration(rand.Intn(int(wait))))
-		wait *= 2
-		if wait > BACKOFF_MAX_TIME {
-			wait = BACKOFF_MAX_TIME
-		}
-	}
-	for {
-		logId := ds.acceptor.Next()
-		ok := paxos.Write(ds.acceptor, ds.id, logId, cmd, ds.rpcList)
-		if ok {
-			break
-		}
-		backoff()
-	}
-}
-
-func (ds *store) Get(key string) Entry {
-	return ds.memStore.Get(key)
-}
-
-func (ds *store) Keys() []string {
-	return ds.memStore.Keys()
-}
-./paxos/message.go
-package paxos
-
-type Request interface {
-}
-
-type Response interface {
-}
-type PrepareRequest struct {
-	LogId    LogId          `json:"log_id"`
-	Proposal ProposalNumber `json:"proposal"`
-}
-
-type PrepareResponse struct {
-	Proposal ProposalNumber `json:"proposal"`
-	Ok       bool           `json:"ok"`
-}
-
-type AcceptRequest[T any] struct {
-	LogId    LogId          `json:"log_id"`
-	Proposal ProposalNumber `json:"proposal"`
-	Value    T              `json:"value"`
-}
-
-type AcceptResponse struct {
-	Proposal ProposalNumber `json:"proposal"`
-	Ok       bool           `json:"ok"`
-}
-
-type CommitRequest[T any] struct {
-	LogId LogId `json:"log_id"`
-	Value T     `json:"value"`
-}
-
-type CommitResponse struct {
-}
-
-type PollRequest struct {
-	LogId LogId `json:"log_id"`
-}
-
-type PollResponse[T any] struct {
-	Promise Promise[T] `json:"promise"`
-}
-./paxos/acceptor.go
-package paxos
-
-import (
-	"sync"
-
-	"github.com/khanh101/paxos/kvstore"
-)
-
-type StateMachine[T any] func(logId LogId, value T)
-
-type Acceptor[T any] interface {
-	// GetValue - get value
-	GetValue(logId LogId) (val T, ok bool)
-	// Next - get smallestUnapplied - used to propose
-	Next() LogId
-	// HandleRPC - handle RPC requests
-	HandleRPC(req Request) (res Response)
-	// Subscribe - subscribe a state machine to log
-	// smallestUnapplied is the index when state machine will start getting updates
-	// it ignores all previous log entries
-	Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func())
-}
-
-func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
-	return (&acceptor[T]{
-		mu:                sync.Mutex{},
-		acceptor:          &simpleAcceptor[T]{log: log},
-		smallestUnapplied: 0,
-		subsciber:         nil,
-	}).applyCommitWithoutLock()
-}
-
-// acceptor - paxos acceptor must be persistent
-type acceptor[T any] struct {
-	mu                sync.Mutex
-	acceptor          *simpleAcceptor[T]
-	smallestUnapplied LogId
-	subsciber         StateMachine[T]
-}
-
-func (a *acceptor[T]) applyCommitWithoutLock() *acceptor[T] {
-	for {
-		promise := a.acceptor.get(a.smallestUnapplied)
-		if promise.Proposal != COMMITTED {
-			break
-		}
-		if a.subsciber != nil {
-			a.subsciber(a.smallestUnapplied, promise.Value)
-		}
-		a.smallestUnapplied++
-	}
-	return a
-}
-
-func (a *acceptor[T]) Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func()) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.subsciber != nil {
-		panic("cannot subscribe twice")
-	}
-	a.subsciber = sm
-	a.smallestUnapplied = smallestUnapplied
-
-	return func() {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		a.subsciber = nil
-	}
-}
-
-func (a *acceptor[T]) GetValue(logId LogId) (T, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	promise := a.acceptor.get(logId)
-	return promise.Value, promise.Proposal == COMMITTED
-}
-
-func (a *acceptor[T]) Next() LogId {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.applyCommitWithoutLock().smallestUnapplied
-}
-
-func (a *acceptor[T]) HandleRPC(r Request) Response {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	switch req := r.(type) {
-	case *PrepareRequest:
-		proposal, ok := a.acceptor.prepare(req.LogId, req.Proposal)
-		return &PrepareResponse{
-			Proposal: proposal,
-			Ok:       ok,
-		}
-	case *AcceptRequest[T]:
-		proposal, ok := a.acceptor.accept(req.LogId, req.Proposal, req.Value)
-		return &AcceptResponse{
-			Proposal: proposal,
-			Ok:       ok,
-		}
-	case *CommitRequest[T]:
-		a.acceptor.commit(req.LogId, req.Value)
-		a.applyCommitWithoutLock()
-		return nil
-	case *PollRequest:
-		promise := a.acceptor.get(req.LogId)
-		return &PollResponse[T]{
-			Promise: promise,
-		}
-	default:
-		return nil
-	}
-}
-./paxos/simple_acceptor.go
-package paxos
-
-import (
-	"github.com/khanh101/paxos/kvstore"
-)
-
-// ProposalNumber - roundId * 4294967296 + nodeId
-type ProposalNumber uint64
-
-type LogId uint64
-
-const (
-	INITIAL   ProposalNumber = 0
-	COMMITTED ProposalNumber = 18446744073709551615
-)
-
-// Promise - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
-type Promise[T any] struct {
-	Proposal ProposalNumber `json:"proposal"`
-	Value    T              `json:"value"`
-}
-
-func zero[T any]() T {
+func zeroPtr[T any]() *T {
 	var v T
-	return v
+	return &v
 }
 
-type simpleAcceptor[T any] struct {
-	log kvstore.Store[LogId, Promise[T]]
-}
-
-func getDefaultLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
-	v, ok := txn.Get(logId)
-	if !ok {
-		return Promise[T]{
-			Proposal: INITIAL,
-			Value:    zero[T](),
-		}
+func RPC[Req any, Res any](transport TransportFunc, name string, req *Req) (res *Res, err error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
 	}
-	return v
-}
-
-func (a *simpleAcceptor[T]) get(logId LogId) (promise Promise[T]) {
-	return a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		return getDefaultLogEntry(txn, logId)
-	}).(Promise[T])
-}
-
-func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
-	a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		txn.Set(logId, Promise[T]{
-			Proposal: COMMITTED,
-			Value:    v,
-		})
-		return nil
-	})
-}
-
-func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (proposalOut ProposalNumber, ok bool) {
-	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		p := getDefaultLogEntry(txn, logId)
-		if p.Proposal == COMMITTED { // reject if committed
-			return [2]any{COMMITTED, false}
-		}
-		if proposal <= p.Proposal { // fulfill promise
-			return [2]any{p.Proposal, false}
-		}
-		// make new promise
-		txn.Set(logId, Promise[T]{
-			Proposal: proposal,
-			Value:    p.Value, // old value
-		})
-		return [2]any{proposal, true}
-	}).([2]any)
-	return r[0].(ProposalNumber), r[1].(bool)
-}
-
-func (a *simpleAcceptor[T]) accept(logId LogId, proposal ProposalNumber, value T) (proposalOut ProposalNumber, ok bool) {
-	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		p := getDefaultLogEntry(txn, logId)
-		if p.Proposal == COMMITTED { // reject if committed
-			return [2]any{COMMITTED, false}
-		}
-		if proposal < p.Proposal { // fulfill promise
-			return [2]any{p.Proposal, false}
-		}
-		// make new promise
-		txn.Set(logId, Promise[T]{
-			Proposal: proposal,
-			Value:    value, // new value
-		})
-		return [2]any{proposal, true}
-	}).([2]any)
-	return r[0].(ProposalNumber), r[1].(bool)
-}
-./paxos/proposer.go
-package paxos
-
-import (
-	"math/rand"
-	"time"
-)
-
-type NodeId uint64
-
-const (
-	PROPOSAL_STEP    ProposalNumber = 4294967296
-	BACKOFF_MIN_TIME time.Duration  = 10 * time.Millisecond
-	BACKOFF_MAX_TIME time.Duration  = 1000 * time.Millisecond
-)
-
-func decompose(proposal ProposalNumber) (uint64, NodeId) {
-	return uint64(proposal / PROPOSAL_STEP), NodeId(proposal % PROPOSAL_STEP)
-}
-func compose(round uint64, nodeId NodeId) ProposalNumber {
-	return PROPOSAL_STEP*ProposalNumber(round) + ProposalNumber(nodeId)
-}
-
-func quorum(n int) int {
-	return n/2 + 1
-}
-
-type RPC func(Request, chan<- Response)
-
-func broadcast[Req any, Res any](rpcList []RPC, req Req) []Res {
-	ch := make(chan Response, len(rpcList))
-	defer close(ch)
-	for _, rpc := range rpcList {
-		rpc(req, ch)
+	msg := message{
+		Cmd:  name,
+		Body: body,
 	}
-	resList := make([]Res, 0, len(rpcList))
-	for range rpcList {
-		res := <-ch
-		if res == nil {
-			continue
-		}
-		resList = append(resList, res.(Res))
+	b, err := json.Marshal(msg)
+	if err != nil {
+		return nil, err
 	}
-	return resList
-}
-
-// Update - check if there is an update
-func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
-	for {
-		logId := a.Next()
-		commited := false
-		var v T
-		for _, res := range broadcast[*PollRequest, *PollResponse[T]](rpcList, &PollRequest{
-			LogId: logId,
-		}) {
-			if res.Promise.Proposal == COMMITTED {
-				v = res.Promise.Value
-				commited = true
-				break
-			}
-		}
-		if !commited {
-			break
-		}
-		a.HandleRPC(&CommitRequest[T]{
-			LogId: logId,
-			Value: v,
-		})
+	b, err = transport(b)
+	if err != nil {
+		return nil, err
 	}
-	return a
-}
 
-// Write - write new value
-func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC) bool {
-	n := len(rpcList)
-	proposal := compose(0, id)
-	wait := BACKOFF_MIN_TIME
-	// exponential backoff
-	backoff := func() {
-		a = Update(a, rpcList)
-		time.Sleep(time.Duration(rand.Intn(int(wait))))
-		wait *= 2
-		if wait > BACKOFF_MAX_TIME {
-			wait = BACKOFF_MAX_TIME
-		}
+	res = zeroPtr[Res]()
+	if err := json.Unmarshal(b, res); err != nil {
+		return nil, err
 	}
-	for {
-		if _, committed := a.GetValue(logId); committed {
-			return false
-		}
-		// prepare
-		{
-			resList := broadcast[*PrepareRequest, *PrepareResponse](rpcList, &PrepareRequest{
-				LogId:    logId,
-				Proposal: proposal,
-			})
-			okCount := 0
-			for _, res := range resList {
-				if res.Ok {
-					okCount++
-				}
-			}
-			if okCount < quorum(n) {
-				// update proposal
-				maxRound := uint64(0)
-				for _, res := range resList {
-					round, _ := decompose(res.Proposal)
-					if maxRound < round {
-						maxRound = round
-					}
-				}
-				proposal = compose(maxRound+1, id)
-				backoff()
-				continue
-			}
-		}
-		// accept
-		{
-			resList := broadcast[*AcceptRequest[T], *AcceptResponse](rpcList, &AcceptRequest[T]{
-				LogId:    logId,
-				Proposal: proposal,
-				Value:    value,
-			})
-			okCount := 0
-			for _, res := range resList {
-				if res.Ok {
-					okCount++
-				}
-			}
-			if okCount < quorum(n) {
-				// update proposal
-				maxRound := uint64(0)
-				for _, res := range resList {
-					round, _ := decompose(res.Proposal)
-					if maxRound < round {
-						maxRound = round
-					}
-				}
-				proposal = compose(maxRound+1, id)
-				backoff()
-				continue
-			}
-		}
-		// commit
-		{
-			// broadcast commit
-			go broadcast[*CommitRequest[T], *CommitResponse](rpcList, &CommitRequest[T]{
-				LogId: logId,
-				Value: value,
-			})
-			// local commit
-			a.HandleRPC(&CommitRequest[T]{
-				LogId: logId,
-				Value: value,
-			})
-		}
-		return true
-	}
-}
-
-func LogCompact[T any](rpcList []RPC) {
-	// TODO
-	// 1. send request to get smallest logId
-	// 2. emit log compaction request
-	// 3. T is a sum type of Command CompressedCommand.
-	//    compact log entries [0, 1, 2, 3, ...] -> [x, 2, 3, ...]
-	//    where x stores CompressedCommand
-	// 4. StateMachine applies CompressedCommand is recovering from snapshot
-	// 5. initLogId is used to restore the StateMachine
-
-	/*
-
-	 */
-	// compressLog[T any](ts ...T) T // type signature for log compression where T is type of value
+	return res, nil
 }
 ./main.go
 package main
@@ -1633,44 +1616,7 @@ class KVStoreDict:
 
     def __repr__(self) -> str:
         return repr(self.__dict__())
-./data/kvstore.json
-[
-  {
-    "badger": "data/acceptor_142",
-    "rpc": "10.2.56.142:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_91",
-    "rpc": "10.2.56.91:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_209",
-    "rpc": "10.2.56.209:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_216",
-    "rpc": "10.2.56.216:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_217",
-    "rpc": "10.2.56.217:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_135",
-    "rpc": "10.2.56.135:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_223",
-    "rpc": "10.2.56.223:13800",
-    "store": "localhost:4000"
-  }
-]./conf/kvstore.json
+./conf/kvstore.json
 [
   {
     "badger": "data/acceptor0",
