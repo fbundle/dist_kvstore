@@ -106,6 +106,9 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 				}
 				if maxProposal <= res.Promise.Proposal {
 					// propagate the value with the highest proposal number
+					// this is actually not important for consensus
+					// but to prevent proposers sending too many different values
+					// this is a mechanism to promote convergence
 					maxProposal = res.Promise.Proposal
 					maxValuePtr = res.Promise.Value
 				}
