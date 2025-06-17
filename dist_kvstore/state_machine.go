@@ -14,7 +14,7 @@ type Entry struct {
 type Cmd struct {
 	Entries []Entry `json:"entries"`
 }
-
+// Equal - TODO better to add a uuid to Cmd
 func (cmd Cmd) Equal(other Cmd) bool {
 	if len(cmd.Entries) != len(other.Entries) {
 		return false
