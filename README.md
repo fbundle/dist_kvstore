@@ -38,3 +38,5 @@ curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "", "ver": <ver>}'
 
 - implement leader election (so that can skip PREPARE phase)
 
+- implement dynamic membership changes
+
