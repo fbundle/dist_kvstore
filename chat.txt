@@ -1783,12 +1783,12 @@ curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "", "ver": <ver>}'
 
 ## TODO 
 
-- implement log compaction
+- implement log compaction (make the code a lot of ugly and complicated)
 
-- implement TLS for RPC and HTTP
+- implement TLS for RPC and HTTP 
 
-- implement leader election (so that can skip PREPARE phase)
+- implement leader election (can skip PREPARE phase - no idea how to do for now)
 
-- implement dynamic membership changes
+- implement dynamic membership changes (low priority - no idea how to do for now)
 
 do you have any comment on this?
