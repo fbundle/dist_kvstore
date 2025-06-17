@@ -104,7 +104,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 				if res.Proposal == proposal {
 					okCount++
 				}
-				if maxProposal < res.Proposal {
+				if maxProposal <= res.Proposal {
 					maxProposal = res.Proposal
 					maxValuePtr = res.Value
 				}
