@@ -27,14 +27,15 @@ func HttpHandle(ds Store) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 			_, err = w.Write(b)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 		switch r.Method {
 		case http.MethodGet:
-			cmd := ds.Get(Cmd{
-				Key: key,
-			})
-			b, err := json.Marshal(cmd)
+			entry := ds.Get(key)
+			b, err := json.Marshal(entry)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -57,9 +58,13 @@ func HttpHandle(ds Store) http.HandlerFunc {
 				return
 			}
 			cmd := Cmd{
-				Key: key,
-				Val: v.Val,
-				Ver: v.Ver,
+				Entries: []Entry{
+					{
+						Key: key,
+						Val: v.Val,
+						Ver: v.Ver,
+					},
+				},
 			}
 
 			ds.Set(cmd)
