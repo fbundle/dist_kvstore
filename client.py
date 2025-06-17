@@ -38,7 +38,10 @@ class KVStoreDict:
         return json.loads(self.kvstore.get(key).val)
 
     def __setitem__(self, key: str, val: Any):
-        val_s = json.dumps(val)
+        if val is None:
+            val_s = ""
+        else:
+            val_s = json.dumps(val)
         wait = 0.001
         while True:
             try:
@@ -52,9 +55,7 @@ class KVStoreDict:
         return self.kvstore.keys()
 
     def __delitem__(self, key: str):
-        self.__setitem__(key, "")
-
-
+        self.__setitem__(key, None)
 
     def values(self) -> Iterator[str]:
         for key in self.keys():
