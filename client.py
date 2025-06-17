@@ -1,6 +1,6 @@
+from typing import Iterator, Any
 import json
 import time
-from typing import Iterator
 import random
 
 import pydantic
@@ -34,14 +34,15 @@ class KVStoreDict:
     def __init__(self, addr: str = "http://localhost:4000"):
         self.kvstore = KVStore(addr)
 
-    def __getitem__(self, key: str) -> str:
-        return self.kvstore.get(key).val
+    def __getitem__(self, key: str) -> Any:
+        return json.loads(self.kvstore.get(key).val)
 
-    def __setitem__(self, key: str, val: str):
+    def __setitem__(self, key: str, val: Any):
+        val_s = json.dumps(val)
         wait = 0.001
         while True:
             try:
-                self.kvstore.set(key, val, self.kvstore.get(key).ver + 1)
+                self.kvstore.set(key, val_s, self.kvstore.get(key).ver + 1)
                 return
             except requests.exceptions.HTTPError as e:
                 time.sleep(wait * random.random())
