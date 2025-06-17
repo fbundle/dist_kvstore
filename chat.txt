@@ -493,7 +493,7 @@ type Entry struct {
 type Cmd struct {
 	Entries []Entry `json:"entries"`
 }
-
+// Equal - TODO better to add a uuid to Cmd
 func (cmd Cmd) Equal(other Cmd) bool {
 	if len(cmd.Entries) != len(other.Entries) {
 		return false
@@ -1656,7 +1656,7 @@ class KVStoreDict:
 
 implementation of distributed kvstore using paxos
 
-paxos is easier to understand and prove. raft is unnecessarily complicated
+paxos is easier to understand and prove unlike raft
 
 [proof](https://github.com/khanh101/khanh101.github.io/blob/master/blog/pdf/paxos-algorithm.pdf)
 
