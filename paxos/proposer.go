@@ -101,12 +101,12 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 			maxProposal := ProposalNumber(0)
 			okCount := 0
 			for _, res := range resList {
-				if res.Proposal == proposal {
+				if res.Ok {
 					okCount++
 				}
-				if maxProposal <= res.Proposal {
-					maxProposal = res.Proposal
-					maxValuePtr = res.Value
+				if maxProposal <= res.Promise.Proposal {
+					maxProposal = res.Promise.Proposal
+					maxValuePtr = res.Promise.Value
 				}
 			}
 			if maxValuePtr == nil {
@@ -123,7 +123,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		}
 		// accept
 		highestProposal, okCount = func() (ProposalNumber, int) {
-			resList := broadcast[*AcceptRequest[T], *AcceptResponse](rpcList, &AcceptRequest[T]{
+			resList := broadcast[*AcceptRequest[T], *AcceptResponse[T]](rpcList, &AcceptRequest[T]{
 				LogId:    logId,
 				Proposal: proposal,
 				Value:    highestValue,
@@ -131,11 +131,11 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 			maxProposal := ProposalNumber(0)
 			okCount := 0
 			for _, res := range resList {
-				if res.Proposal == proposal {
+				if res.Ok {
 					okCount++
 				}
-				if maxProposal < res.Proposal {
-					maxProposal = res.Proposal
+				if maxProposal < res.Promise.Proposal {
+					maxProposal = res.Promise.Proposal
 				}
 			}
 			return maxProposal, okCount

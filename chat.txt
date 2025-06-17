@@ -373,7 +373,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	}
 	server = server.
 		Register("prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](acceptor)).
-		Register("accept", makeHandlerFunc[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](acceptor)).
+		Register("accept", makeHandlerFunc[paxos.AcceptRequest[Cmd], paxos.AcceptResponse[Cmd]](acceptor)).
 		Register("commit", makeHandlerFunc[paxos.CommitRequest[Cmd], paxos.CommitResponse](acceptor)).
 		Register("poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[Cmd]](acceptor))
 
@@ -392,7 +392,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 					case *paxos.PrepareRequest:
 						return rpc.RPC[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](transport, "prepare", req.(*paxos.PrepareRequest))
 					case *paxos.AcceptRequest[Cmd]:
-						return rpc.RPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse](transport, "accept", req.(*paxos.AcceptRequest[Cmd]))
+						return rpc.RPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse[Cmd]](transport, "accept", req.(*paxos.AcceptRequest[Cmd]))
 					case *paxos.CommitRequest[Cmd]:
 						return rpc.RPC[paxos.CommitRequest[Cmd], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[Cmd]))
 					case *paxos.PollRequest:
@@ -997,12 +997,12 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 			maxProposal := ProposalNumber(0)
 			okCount := 0
 			for _, res := range resList {
-				if res.Proposal == proposal {
+				if res.Ok {
 					okCount++
 				}
-				if maxProposal <= res.Proposal {
-					maxProposal = res.Proposal
-					maxValuePtr = res.Value
+				if maxProposal <= res.Promise.Proposal {
+					maxProposal = res.Promise.Proposal
+					maxValuePtr = res.Promise.Value
 				}
 			}
 			if maxValuePtr == nil {
@@ -1019,7 +1019,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		}
 		// accept
 		highestProposal, okCount = func() (ProposalNumber, int) {
-			resList := broadcast[*AcceptRequest[T], *AcceptResponse](rpcList, &AcceptRequest[T]{
+			resList := broadcast[*AcceptRequest[T], *AcceptResponse[T]](rpcList, &AcceptRequest[T]{
 				LogId:    logId,
 				Proposal: proposal,
 				Value:    highestValue,
@@ -1027,11 +1027,11 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 			maxProposal := ProposalNumber(0)
 			okCount := 0
 			for _, res := range resList {
-				if res.Proposal == proposal {
+				if res.Ok {
 					okCount++
 				}
-				if maxProposal < res.Proposal {
-					maxProposal = res.Proposal
+				if maxProposal < res.Promise.Proposal {
+					maxProposal = res.Promise.Proposal
 				}
 			}
 			return maxProposal, okCount
