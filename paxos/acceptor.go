@@ -8,12 +8,6 @@ import (
 
 type StateMachine[T any] func(logId LogId, value T)
 
-/*
-	type StateMachine[T any] interface{
-		Apply(logId LogId, value T) // apply value
-		Snapshot() T // snapshot into value
-	}
-*/
 type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
