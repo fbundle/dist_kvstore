@@ -30,3 +30,9 @@ curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "", "ver": <ver>}'
 ```
 
 
+## TODO 
+
+- implement log compaction
+
+- implement TLS for RPC and HTTP
+
