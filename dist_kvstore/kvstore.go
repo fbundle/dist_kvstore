@@ -165,8 +165,8 @@ func (ds *store) Set(cmd Cmd) {
 	}
 	for {
 		logId := ds.acceptor.Next()
-		ok := paxos.Write(ds.acceptor, ds.id, logId, cmd, ds.rpcList)
-		if ok {
+		value, ok := paxos.Write(ds.acceptor, ds.id, logId, cmd, ds.rpcList)
+		if ok && value.Equal(cmd) {
 			break
 		}
 		backoff()

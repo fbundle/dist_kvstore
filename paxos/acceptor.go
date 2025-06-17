@@ -21,7 +21,7 @@ type Acceptor[T any] interface {
 	Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func())
 }
 
-func NewAcceptor[T comparable](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 	return (&acceptor[T]{
 		mu:                sync.Mutex{},
 		acceptor:          &simpleAcceptor[T]{log: log},
@@ -31,7 +31,7 @@ func NewAcceptor[T comparable](log kvstore.Store[LogId, Promise[T]]) Acceptor[T]
 }
 
 // acceptor - paxos acceptor must be persistent
-type acceptor[T comparable] struct {
+type acceptor[T any] struct {
 	mu                sync.Mutex
 	acceptor          *simpleAcceptor[T]
 	smallestUnapplied LogId

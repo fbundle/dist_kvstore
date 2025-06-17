@@ -461,8 +461,8 @@ func (ds *store) Set(cmd Cmd) {
 	}
 	for {
 		logId := ds.acceptor.Next()
-		ok := paxos.Write(ds.acceptor, ds.id, logId, cmd, ds.rpcList)
-		if ok {
+		value, ok := paxos.Write(ds.acceptor, ds.id, logId, cmd, ds.rpcList)
+		if ok && value.Equal(cmd) {
 			break
 		}
 		backoff()
@@ -490,7 +490,24 @@ type Entry struct {
 	Ver uint64 `json:"ver"`
 }
 
-type Cmd = Entry
+type Cmd struct {
+	Entries []Entry `json:"entries"`
+}
+
+func (cmd Cmd) Equal(other Cmd) bool {
+	if len(cmd.Entries) != len(other.Entries) {
+		return false
+	}
+	for i := range cmd.Entries {
+		if cmd.Entries[i].Key != other.Entries[i].Key {
+			return false
+		}
+		if cmd.Entries[i].Val != other.Entries[i].Val {
+			return false
+		}
+	}
+	return true
+}
 
 type stateMachine struct {
 	store kvstore.MemStore[string, Entry]
@@ -516,15 +533,16 @@ func (sm *stateMachine) Keys() []string {
 
 func (sm *stateMachine) Apply(logId paxos.LogId, cmd Cmd) {
 	sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
-		entry := cmd
-		oldEntry := getDefaultEntry(txn, entry.Key)
-		if entry.Ver <= oldEntry.Ver {
-			return nil // ignore update
-		}
-		if len(entry.Val) == 0 {
-			txn.Del(entry.Key)
-		} else {
-			txn.Set(entry.Key, entry)
+		for _, entry := range cmd.Entries {
+			oldEntry := getDefaultEntry(txn, entry.Key)
+			if entry.Ver <= oldEntry.Ver {
+				continue // ignore update
+			}
+			if len(entry.Val) == 0 {
+				txn.Del(entry.Key)
+			} else {
+				txn.Set(entry.Key, entry)
+			}
 		}
 		return nil
 	})
@@ -609,9 +627,13 @@ func HttpHandle(ds Store) http.HandlerFunc {
 				return
 			}
 			cmd := Cmd{
-				Key: key,
-				Val: v.Val,
-				Ver: v.Ver,
+				Entries: []Entry{
+					{
+						Key: key,
+						Val: v.Val,
+						Ver: v.Ver,
+					},
+				},
 			}
 
 			ds.Set(cmd)
@@ -640,7 +662,7 @@ const (
 )
 
 // Promise - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
-type Promise[T comparable] struct {
+type Promise[T any] struct {
 	Proposal ProposalNumber `json:"proposal"`
 	Value    *T             `json:"value"`
 }
@@ -650,11 +672,11 @@ func zero[T any]() T {
 	return v
 }
 
-type simpleAcceptor[T comparable] struct {
+type simpleAcceptor[T any] struct {
 	log kvstore.Store[LogId, Promise[T]]
 }
 
-func getDefaultLogEntry[T comparable](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
+func getDefaultLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
 	v, ok := txn.Get(logId)
 	if !ok {
 		return Promise[T]{
@@ -735,7 +757,7 @@ type Acceptor[T any] interface {
 	Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func())
 }
 
-func NewAcceptor[T comparable](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 	return (&acceptor[T]{
 		mu:                sync.Mutex{},
 		acceptor:          &simpleAcceptor[T]{log: log},
@@ -745,7 +767,7 @@ func NewAcceptor[T comparable](log kvstore.Store[LogId, Promise[T]]) Acceptor[T]
 }
 
 // acceptor - paxos acceptor must be persistent
-type acceptor[T comparable] struct {
+type acceptor[T any] struct {
 	mu                sync.Mutex
 	acceptor          *simpleAcceptor[T]
 	smallestUnapplied LogId
@@ -840,12 +862,12 @@ type PrepareRequest struct {
 	Proposal ProposalNumber `json:"proposal"`
 }
 
-type PrepareResponse[T comparable] struct {
+type PrepareResponse[T any] struct {
 	Proposal ProposalNumber `json:"proposal"`
 	Value    *T             `json:"value"`
 }
 
-type AcceptRequest[T comparable] struct {
+type AcceptRequest[T any] struct {
 	LogId    LogId          `json:"log_id"`
 	Proposal ProposalNumber `json:"proposal"`
 	Value    T              `json:"value"`
@@ -944,7 +966,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 }
 
 // Write - write new value
-func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []RPC) bool {
+func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC) (T, bool) {
 	n := len(rpcList)
 	proposal := compose(0, id)
 	wait := BACKOFF_MIN_TIME
@@ -959,7 +981,7 @@ func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []R
 	}
 	for {
 		if _, committed := a.GetValue(logId); committed {
-			return false
+			return zero[T](), false
 		}
 		var maxValue T
 		var maxProposal ProposalNumber
@@ -984,7 +1006,7 @@ func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []R
 				}
 			}
 			if maxValuePtr == nil {
-				maxValuePtr = &x
+				maxValuePtr = &value
 			}
 			return *maxValuePtr, maxProposal, okCount
 		}()
@@ -1033,7 +1055,7 @@ func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []R
 				Value: maxValue,
 			})
 		}()
-		return maxValue == x
+		return maxValue, true
 	}
 }
 

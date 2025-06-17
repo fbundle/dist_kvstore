@@ -10,12 +10,12 @@ type PrepareRequest struct {
 	Proposal ProposalNumber `json:"proposal"`
 }
 
-type PrepareResponse[T comparable] struct {
+type PrepareResponse[T any] struct {
 	Proposal ProposalNumber `json:"proposal"`
 	Value    *T             `json:"value"`
 }
 
-type AcceptRequest[T comparable] struct {
+type AcceptRequest[T any] struct {
 	LogId    LogId          `json:"log_id"`
 	Proposal ProposalNumber `json:"proposal"`
 	Value    T              `json:"value"`

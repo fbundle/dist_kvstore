@@ -15,7 +15,7 @@ const (
 )
 
 // Promise - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
-type Promise[T comparable] struct {
+type Promise[T any] struct {
 	Proposal ProposalNumber `json:"proposal"`
 	Value    *T             `json:"value"`
 }
@@ -25,11 +25,11 @@ func zero[T any]() T {
 	return v
 }
 
-type simpleAcceptor[T comparable] struct {
+type simpleAcceptor[T any] struct {
 	log kvstore.Store[LogId, Promise[T]]
 }
 
-func getDefaultLogEntry[T comparable](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
+func getDefaultLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
 	v, ok := txn.Get(logId)
 	if !ok {
 		return Promise[T]{

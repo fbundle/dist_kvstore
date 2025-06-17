@@ -70,7 +70,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 }
 
 // Write - write new value
-func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []RPC) bool {
+func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC) (T, bool) {
 	n := len(rpcList)
 	proposal := compose(0, id)
 	wait := BACKOFF_MIN_TIME
@@ -85,7 +85,7 @@ func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []R
 	}
 	for {
 		if _, committed := a.GetValue(logId); committed {
-			return false
+			return zero[T](), false
 		}
 		var maxValue T
 		var maxProposal ProposalNumber
@@ -110,7 +110,7 @@ func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []R
 				}
 			}
 			if maxValuePtr == nil {
-				maxValuePtr = &x
+				maxValuePtr = &value
 			}
 			return *maxValuePtr, maxProposal, okCount
 		}()
@@ -159,7 +159,7 @@ func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []R
 				Value: maxValue,
 			})
 		}()
-		return maxValue == x
+		return maxValue, true
 	}
 }
 
