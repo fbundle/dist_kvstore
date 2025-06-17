@@ -961,35 +961,33 @@ func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []R
 		if _, committed := a.GetValue(logId); committed {
 			return false
 		}
-		// prepare
 		var maxValue T
 		var maxProposal ProposalNumber
 		var okCount int
-		{
+		// prepare
+		maxValue, maxProposal, okCount = func() (T, ProposalNumber, int) {
 			resList := broadcast[*PrepareRequest, *PrepareResponse[T]](rpcList, &PrepareRequest{
 				LogId:    logId,
 				Proposal: proposal,
 			})
 
-			maxValue, maxProposal, okCount = func() (T, ProposalNumber, int) {
-				maxValue := zero[*T]()
-				maxProposal := ProposalNumber(0)
-				okCount := 0
-				for _, res := range resList {
-					if res.Proposal == proposal {
-						okCount++
-					}
-					if maxProposal < res.Proposal {
-						maxProposal = res.Proposal
-						maxValue = res.Value
-					}
+			maxValuePtr := zero[*T]()
+			maxProposal := ProposalNumber(0)
+			okCount := 0
+			for _, res := range resList {
+				if res.Proposal == proposal {
+					okCount++
 				}
-				if maxValue == nil {
-					maxValue = &x
+				if maxProposal < res.Proposal {
+					maxProposal = res.Proposal
+					maxValuePtr = res.Value
 				}
-				return *maxValue, maxProposal, okCount
-			}()
-		}
+			}
+			if maxValuePtr == nil {
+				maxValuePtr = &x
+			}
+			return *maxValuePtr, maxProposal, okCount
+		}()
 
 		if okCount < quorum(n) {
 			maxRound, _ := decompose(maxProposal)
@@ -998,26 +996,24 @@ func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []R
 			continue
 		}
 		// accept
-		{
+		maxProposal, okCount = func() (ProposalNumber, int) {
 			resList := broadcast[*AcceptRequest[T], *AcceptResponse](rpcList, &AcceptRequest[T]{
 				LogId:    logId,
 				Proposal: proposal,
 				Value:    maxValue,
 			})
-			maxProposal, okCount = func() (ProposalNumber, int) {
-				maxProposal := ProposalNumber(0)
-				okCount := 0
-				for _, res := range resList {
-					if res.Proposal == proposal {
-						okCount++
-					}
-					if maxProposal < res.Proposal {
-						maxProposal = res.Proposal
-					}
+			maxProposal := ProposalNumber(0)
+			okCount := 0
+			for _, res := range resList {
+				if res.Proposal == proposal {
+					okCount++
 				}
-				return maxProposal, okCount
-			}()
-		}
+				if maxProposal < res.Proposal {
+					maxProposal = res.Proposal
+				}
+			}
+			return maxProposal, okCount
+		}()
 		if okCount < quorum(n) {
 			maxRound, _ := decompose(maxProposal)
 			proposal = compose(maxRound+1, id)
@@ -1025,7 +1021,7 @@ func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []R
 			continue
 		}
 		// commit
-		{
+		func() {
 			// broadcast commit
 			go broadcast[*CommitRequest[T], *CommitResponse](rpcList, &CommitRequest[T]{
 				LogId: logId,
@@ -1036,7 +1032,7 @@ func Write[T comparable](a Acceptor[T], id NodeId, logId LogId, x T, rpcList []R
 				LogId: logId,
 				Value: maxValue,
 			})
-		}
+		}()
 		return maxValue == x
 	}
 }
