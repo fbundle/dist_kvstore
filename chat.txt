@@ -1255,21 +1255,20 @@ type simpleAcceptor[T any] struct {
 	log kvstore.Store[LogId, Promise[T]]
 }
 
-func getOrSetLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
-	if v, ok := txn.Get(logId); ok {
-		return v
+func getDefaultLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
+	v, ok := txn.Get(logId)
+	if !ok {
+		return Promise[T]{
+			Proposal: INITIAL,
+			Value:    zero[T](),
+		}
 	}
-	v := Promise[T]{
-		Proposal: INITIAL,
-		Value:    zero[T](),
-	}
-	txn.Set(logId, v)
 	return v
 }
 
 func (a *simpleAcceptor[T]) get(logId LogId) (promise Promise[T]) {
 	return a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		return getOrSetLogEntry(txn, logId)
+		return getDefaultLogEntry(txn, logId)
 	}).(Promise[T])
 }
 
@@ -1285,7 +1284,7 @@ func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
 
 func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (proposalOut ProposalNumber, ok bool) {
 	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		p := getOrSetLogEntry(txn, logId)
+		p := getDefaultLogEntry(txn, logId)
 		if p.Proposal == COMMITTED { // reject if committed
 			return [2]any{COMMITTED, false}
 		}
@@ -1304,7 +1303,7 @@ func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (propo
 
 func (a *simpleAcceptor[T]) accept(logId LogId, proposal ProposalNumber, value T) (proposalOut ProposalNumber, ok bool) {
 	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		p := getOrSetLogEntry(txn, logId)
+		p := getDefaultLogEntry(txn, logId)
 		if p.Proposal == COMMITTED { // reject if committed
 			return [2]any{COMMITTED, false}
 		}
