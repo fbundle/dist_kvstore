@@ -61,7 +61,9 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 		if !commited {
 			break
 		}
-		// TODO check if every is committed - if yes, trigger snapshot request
+		// TODO check if every is committed
+		// if yes, and (a.smallestUnapplied - a.snapshot) is wide enough
+		//  trigger snapshot request
 		a.Handle(&CommitRequest[T]{
 			LogId: logId,
 			Value: v,
