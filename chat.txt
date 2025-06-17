@@ -65,12 +65,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/paxos"
-	"github.com/khanh101/paxos/rpc"
 	"math/rand/v2"
 	"strings"
 	"sync"
+
+	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/paxos"
+	"github.com/khanh101/paxos/rpc"
 )
 
 func testLocal() {
@@ -110,7 +111,7 @@ func testLocal() {
 	listenerList := make([][]string, n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i].Subscribe(0, func(logId paxos.LogId, value string) {
+		acceptorList[i].Subscribe(func(logId paxos.LogId, value string) {
 			fmt.Printf("acceptor %d log_id %d value %v\n", i, logId, value)
 			listenerList[i] = append(listenerList[i], fmt.Sprintf("%v", value))
 		})
@@ -155,7 +156,7 @@ func testLocal() {
 
 	// new subscriber from 13
 	for i := 0; i < n; i++ {
-		acceptorList[i].Subscribe(13, func(logId paxos.LogId, value string) {
+		acceptorList[i].Subscribe(func(logId paxos.LogId, value string) {
 			fmt.Printf("%v", value)
 		})
 		fmt.Println()
@@ -451,14 +452,22 @@ import (
 )
 
 type SubscriberPool[T any] interface {
-	Subscribe(T)func()
-	Iterate(func(T) bool)
+	Subscribe(T) func()
+	Iterate(func(T))
+}
+
+func NewPool[T any]() SubscriberPool[T] {
+	return &subscriberPool[T]{
+		mu:    sync.RWMutex{},
+		count: 0,
+		pool:  make(map[uint]T),
+	}
 }
 
 type subscriberPool[T any] struct {
-	mu sync.RWMutex
+	mu    sync.RWMutex
 	count uint
-	pool map[uint]T
+	pool  map[uint]T
 }
 
 func (p *subscriberPool[T]) Subscribe(t T) func() {
@@ -474,16 +483,14 @@ func (p *subscriberPool[T]) Subscribe(t T) func() {
 	}
 }
 
-func (p *subscriberPool[T]) Iterate(f func(t T) bool) {
+func (p *subscriberPool[T]) Iterate(f func(t T)) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	for _, t := range p.pool {
-		ok := f(t)
-		if !ok {
-			break
-		}
+		f(t)
 	}
-}./rpc/dispatcher.go
+}
+./rpc/dispatcher.go
 package rpc
 
 import (
@@ -805,12 +812,13 @@ package dist_kvstore
 
 import (
 	"context"
+	"sync"
+	"time"
+
 	"github.com/dgraph-io/badger/v4"
 	"github.com/khanh101/paxos/kvstore"
 	"github.com/khanh101/paxos/paxos"
 	"github.com/khanh101/paxos/rpc"
-	"sync"
-	"time"
 )
 
 const (
@@ -875,7 +883,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	}
 	acceptor := paxos.NewAcceptor[Cmd](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
 	memStore := kvstore.NewMemStore[string, Cmd]()
-	acceptor.Subscribe(0, func(logId paxos.LogId, cmd Cmd) {
+	acceptor.Subscribe(func(logId paxos.LogId, cmd Cmd) {
 		memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {
 			oldCmd := getDefaultCmd(txn, cmd.Key)
 			if cmd.Ver <= oldCmd.Ver {
@@ -1054,18 +1062,16 @@ import (
 	"sync"
 
 	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/subscriber"
 )
 
-type Machine[CT any, T any] interface {
-	Recover(c CT) Machine[CT, T]
-	Apply(v T) Machine[CT, T]
-}
+type StateMachine[T any] func(logId LogId, value T)
 
 type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
 	Handle(req Request) (res Response)
-	Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func())
+	Subscribe(subscriber StateMachine[T]) (cancel func())
 }
 
 func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
@@ -1074,21 +1080,17 @@ func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 		acceptor: &simpleAcceptor[T]{
 			log: log,
 		},
-		smallestUncompressed: 0,
-		smallestUnapplied:    0,
-		subscriberCount:      0,
-		subscriberMap:        make(map[uint64]func(logId LogId, value T)),
+		smallestUnapplied: 0,
+		subscriberPool:    subscriber.NewPool[StateMachine[T]](),
 	}).updateLocalCommitWithoutLock()
 }
 
 // acceptor - paxos acceptor must be persistent
 type acceptor[T any] struct {
-	mu                   sync.Mutex
-	acceptor             *simpleAcceptor[T]
-	smallestUncompressed LogId
-	smallestUnapplied    LogId
-	subscriberCount      uint64
-	subscriberMap        map[uint64]func(logId LogId, value T)
+	mu                sync.Mutex
+	acceptor          *simpleAcceptor[T]
+	smallestUnapplied LogId
+	subscriberPool    subscriber.SubscriberPool[StateMachine[T]]
 }
 
 func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
@@ -1097,31 +1099,21 @@ func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
 		if promise.Proposal != COMMITTED {
 			break
 		}
-		for _, subscriber := range a.subscriberMap {
-			subscriber(a.smallestUnapplied, promise.Value)
-		}
+		a.subscriberPool.Iterate(func(sm StateMachine[T]) {
+			sm(a.smallestUnapplied, promise.Value)
+		})
 		a.smallestUnapplied++
 	}
 	return a
 }
 
-func (a *acceptor[T]) Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func()) {
+func (a *acceptor[T]) Subscribe(sm StateMachine[T]) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.smallestUnapplied < init {
-		panic("subscribe from a future log_id")
+	for logId := LogId(0); logId < a.smallestUnapplied; logId++ {
+		sm(logId, a.acceptor.get(logId).Value)
 	}
-	for logId := init; logId < a.smallestUnapplied; logId++ {
-		subscriber(logId, a.acceptor.get(logId).Value)
-	}
-	count := a.subscriberCount
-	a.subscriberCount++
-	a.subscriberMap[count] = subscriber
-	return func() {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		delete(a.subscriberMap, count)
-	}
+	return a.subscriberPool.Subscribe(sm)
 }
 
 func (a *acceptor[T]) Get(logId LogId) (T, bool) {

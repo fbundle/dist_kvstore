@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/paxos"
-	"github.com/khanh101/paxos/rpc"
 	"math/rand/v2"
 	"strings"
 	"sync"
+
+	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/paxos"
+	"github.com/khanh101/paxos/rpc"
 )
 
 func testLocal() {
@@ -47,7 +48,7 @@ func testLocal() {
 	listenerList := make([][]string, n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i].Subscribe(0, func(logId paxos.LogId, value string) {
+		acceptorList[i].Subscribe(func(logId paxos.LogId, value string) {
 			fmt.Printf("acceptor %d log_id %d value %v\n", i, logId, value)
 			listenerList[i] = append(listenerList[i], fmt.Sprintf("%v", value))
 		})
@@ -92,7 +93,7 @@ func testLocal() {
 
 	// new subscriber from 13
 	for i := 0; i < n; i++ {
-		acceptorList[i].Subscribe(13, func(logId paxos.LogId, value string) {
+		acceptorList[i].Subscribe(func(logId paxos.LogId, value string) {
 			fmt.Printf("%v", value)
 		})
 		fmt.Println()

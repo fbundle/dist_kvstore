@@ -2,12 +2,13 @@ package dist_kvstore
 
 import (
 	"context"
+	"sync"
+	"time"
+
 	"github.com/dgraph-io/badger/v4"
 	"github.com/khanh101/paxos/kvstore"
 	"github.com/khanh101/paxos/paxos"
 	"github.com/khanh101/paxos/rpc"
-	"sync"
-	"time"
 )
 
 const (
@@ -72,7 +73,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	}
 	acceptor := paxos.NewAcceptor[Cmd](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
 	memStore := kvstore.NewMemStore[string, Cmd]()
-	acceptor.Subscribe(0, func(logId paxos.LogId, cmd Cmd) {
+	acceptor.Subscribe(func(logId paxos.LogId, cmd Cmd) {
 		memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {
 			oldCmd := getDefaultCmd(txn, cmd.Key)
 			if cmd.Ver <= oldCmd.Ver {

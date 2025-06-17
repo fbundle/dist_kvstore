@@ -5,14 +5,22 @@ import (
 )
 
 type SubscriberPool[T any] interface {
-	Subscribe(T)func()
-	Iterate(func(T) bool)
+	Subscribe(T) func()
+	Iterate(func(T))
+}
+
+func NewPool[T any]() SubscriberPool[T] {
+	return &subscriberPool[T]{
+		mu:    sync.RWMutex{},
+		count: 0,
+		pool:  make(map[uint]T),
+	}
 }
 
 type subscriberPool[T any] struct {
-	mu sync.RWMutex
+	mu    sync.RWMutex
 	count uint
-	pool map[uint]T
+	pool  map[uint]T
 }
 
 func (p *subscriberPool[T]) Subscribe(t T) func() {
@@ -28,13 +36,10 @@ func (p *subscriberPool[T]) Subscribe(t T) func() {
 	}
 }
 
-func (p *subscriberPool[T]) Iterate(f func(t T) bool) {
+func (p *subscriberPool[T]) Iterate(f func(t T)) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	for _, t := range p.pool {
-		ok := f(t)
-		if !ok {
-			break
-		}
+		f(t)
 	}
 }

@@ -4,18 +4,16 @@ import (
 	"sync"
 
 	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/subscriber"
 )
 
-type Machine[CT any, T any] interface {
-	Recover(c CT) Machine[CT, T]
-	Apply(v T) Machine[CT, T]
-}
+type StateMachine[T any] func(logId LogId, value T)
 
 type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
 	Handle(req Request) (res Response)
-	Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func())
+	Subscribe(subscriber StateMachine[T]) (cancel func())
 }
 
 func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
@@ -24,21 +22,17 @@ func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 		acceptor: &simpleAcceptor[T]{
 			log: log,
 		},
-		smallestUncompressed: 0,
-		smallestUnapplied:    0,
-		subscriberCount:      0,
-		subscriberMap:        make(map[uint64]func(logId LogId, value T)),
+		smallestUnapplied: 0,
+		subscriberPool:    subscriber.NewPool[StateMachine[T]](),
 	}).updateLocalCommitWithoutLock()
 }
 
 // acceptor - paxos acceptor must be persistent
 type acceptor[T any] struct {
-	mu                   sync.Mutex
-	acceptor             *simpleAcceptor[T]
-	smallestUncompressed LogId
-	smallestUnapplied    LogId
-	subscriberCount      uint64
-	subscriberMap        map[uint64]func(logId LogId, value T)
+	mu                sync.Mutex
+	acceptor          *simpleAcceptor[T]
+	smallestUnapplied LogId
+	subscriberPool    subscriber.SubscriberPool[StateMachine[T]]
 }
 
 func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
@@ -47,31 +41,21 @@ func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
 		if promise.Proposal != COMMITTED {
 			break
 		}
-		for _, subscriber := range a.subscriberMap {
-			subscriber(a.smallestUnapplied, promise.Value)
-		}
+		a.subscriberPool.Iterate(func(sm StateMachine[T]) {
+			sm(a.smallestUnapplied, promise.Value)
+		})
 		a.smallestUnapplied++
 	}
 	return a
 }
 
-func (a *acceptor[T]) Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func()) {
+func (a *acceptor[T]) Subscribe(sm StateMachine[T]) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.smallestUnapplied < init {
-		panic("subscribe from a future log_id")
+	for logId := LogId(0); logId < a.smallestUnapplied; logId++ {
+		sm(logId, a.acceptor.get(logId).Value)
 	}
-	for logId := init; logId < a.smallestUnapplied; logId++ {
-		subscriber(logId, a.acceptor.get(logId).Value)
-	}
-	count := a.subscriberCount
-	a.subscriberCount++
-	a.subscriberMap[count] = subscriber
-	return func() {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		delete(a.subscriberMap, count)
-	}
+	return a.subscriberPool.Subscribe(sm)
 }
 
 func (a *acceptor[T]) Get(logId LogId) (T, bool) {
