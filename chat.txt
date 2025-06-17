@@ -1126,14 +1126,14 @@ type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
 	Next() LogId
 	Handle(req Request) (res Response)
-	Subscribe(sm StateMachine[T]) (cancel func())
+	Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func())
 }
 
-func NewAcceptor[T any](smallestUnapplied LogId, log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 	return (&acceptor[T]{
 		mu:                sync.Mutex{},
 		acceptor:          &simpleAcceptor[T]{log: log},
-		smallestUnapplied: smallestUnapplied,
+		smallestUnapplied: 0,
 		subsciber:         nil,
 	}).applyCommitWithoutLock()
 }
@@ -1160,18 +1160,17 @@ func (a *acceptor[T]) applyCommitWithoutLock() *acceptor[T] {
 	return a
 }
 
-func (a *acceptor[T]) Subscribe(sm StateMachine[T]) (cancel func()) {
+// Subscribe - subscribe a state machine to log
+// smallestUnapplied is the index when state machine will start getting updates
+func (a *acceptor[T]) Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.subsciber != nil {
 		panic("cannot subscribe twice")
 	}
 	a.subsciber = sm
+	a.smallestUnapplied = smallestUnapplied
 
-	for logId := LogId(0); logId < a.smallestUnapplied; logId++ {
-		promise := a.acceptor.get(logId)
-		a.subsciber(logId, promise.Value)
-	}
 	return func() {
 		a.mu.Lock()
 		defer a.mu.Unlock()
