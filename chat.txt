@@ -292,6 +292,474 @@ func testRPCTCP() {
 func main() {
 	testRPC()
 }
+./kvstore/store.go
+package kvstore
+
+type Txn[K comparable, V any] interface {
+	Get(k K) (v V, ok bool)
+	Set(k K, v V)
+	Del(k K)
+}
+
+// Store - threadsafe stable store
+type Store[K comparable, V any] interface {
+	Update(update func(txn Txn[K, V]) any) any
+}
+
+type MemStore[K comparable, V any] interface {
+	Store[K, V]
+	Keys() []K
+}
+./kvstore/barger_store.go
+package kvstore
+
+import (
+	"encoding/json"
+	"errors"
+	"github.com/dgraph-io/badger/v4"
+	"sync"
+)
+
+func NewBargerStore[K comparable, V any](db *badger.DB) Store[K, V] {
+	return &badgerStore[K, V]{
+		mu: sync.Mutex{},
+		db: db,
+	}
+}
+
+type badgerStore[K comparable, V any] struct {
+	mu sync.Mutex
+	db *badger.DB
+}
+
+type badgerTxn[K comparable, V any] struct {
+	txn *badger.Txn
+}
+
+func (b *badgerTxn[K, V]) Get(k K) (v V, ok bool) {
+	kb, err := json.Marshal(k)
+	if err != nil {
+		panic(err)
+	}
+	i, err := b.txn.Get(kb)
+	if errors.Is(err, badger.ErrKeyNotFound) {
+		return v, false
+	}
+	if err != nil {
+		panic(err)
+	}
+	err = i.Value(func(val []byte) error {
+		return json.Unmarshal(val, &v)
+	})
+	if err != nil {
+		panic(err)
+	}
+	return v, true
+}
+
+func (b *badgerTxn[K, V]) Set(k K, v V) {
+	kb, err := json.Marshal(k)
+	if err != nil {
+		panic(err)
+	}
+	vb, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	err = b.txn.Set(kb, vb)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (b *badgerTxn[K, V]) Del(k K) {
+	kb, err := json.Marshal(k)
+	if err != nil {
+		panic(err)
+	}
+	err = b.txn.Delete(kb)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (b *badgerStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var out any
+	_ = b.db.Update(func(txn *badger.Txn) error {
+		out = update(&badgerTxn[K, V]{txn: txn})
+		return nil
+	})
+	return out
+}
+
+func (b *badgerStore[K, V]) Close() {
+	err := b.db.Close()
+	if err != nil {
+		panic(err)
+	}
+}
+./kvstore/mem_store.go
+package kvstore
+
+import "sync"
+
+func NewMemStore[K comparable, V any]() MemStore[K, V] {
+	return &memStore[K, V]{
+		mu:    sync.Mutex{},
+		store: make(map[K]V),
+	}
+}
+
+type memStore[K comparable, V any] struct {
+	mu    sync.Mutex
+	store map[K]V
+}
+
+func (m *memStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return update(m)
+}
+
+func (m *memStore[K, V]) Keys() (keys []K) {
+	keys = make([]K, 0, len(m.store))
+	for k := range m.store {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func (m *memStore[K, V]) Get(k K) (v V, ok bool) {
+	v, ok = m.store[k]
+	return v, ok
+}
+
+func (m *memStore[K, V]) Set(k K, v V) {
+	m.store[k] = v
+}
+
+func (m *memStore[K, V]) Del(k K) {
+	delete(m.store, k)
+}
+./rpc/dispatcher.go
+package rpc
+
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+)
+
+type Dispatcher interface {
+	Register(name string, h any) Dispatcher
+	Handle(input []byte) (output []byte, err error)
+}
+
+func NewDispatcher() Dispatcher {
+	return &dispatcher{
+		handlerMap: make(map[string]handler),
+	}
+}
+
+type message struct {
+	Cmd  string `json:"cmd"`
+	Body []byte `json:"body"`
+}
+
+type handler struct {
+	handlerFunc reflect.Value
+	argType     reflect.Type
+}
+
+type dispatcher struct {
+	handlerMap map[string]handler
+}
+
+func (d *dispatcher) Register(name string, h any) Dispatcher {
+	handlerFunc := reflect.ValueOf(h)
+	handlerFuncType := handlerFunc.Type()
+	if handlerFuncType.Kind() != reflect.Func || handlerFuncType.NumIn() != 1 || handlerFuncType.NumOut() != 1 {
+		panic("handler must be of form func(*SomeRequest) *SomeResponse")
+	}
+	argType := handlerFuncType.In(0)
+	if argType.Kind() != reflect.Ptr || handlerFuncType.Out(0).Kind() != reflect.Ptr {
+		panic("handler arguments and return type must be pointers")
+	}
+	d.handlerMap[name] = handler{
+		handlerFunc: handlerFunc,
+		argType:     argType,
+	}
+	return d
+}
+
+func (d *dispatcher) Handle(input []byte) (output []byte, err error) {
+	msg := message{}
+	if err := json.Unmarshal(input, &msg); err != nil {
+		return nil, err
+	}
+
+	h, ok := d.handlerMap[msg.Cmd]
+	if !ok {
+		return nil, fmt.Errorf("command not found")
+	}
+
+	argPtr := reflect.New(h.argType.Elem()).Interface()
+	if err := json.Unmarshal(msg.Body, argPtr); err != nil {
+		return nil, err
+	}
+
+	out := h.handlerFunc.Call([]reflect.Value{reflect.ValueOf(argPtr)})[0].Interface()
+
+	output, err = json.Marshal(out)
+	if err != nil {
+		return nil, err
+	}
+	return output, nil
+}
+./rpc/rpc.go
+package rpc
+
+import (
+	"encoding/json"
+)
+
+type TransportFunc func([]byte) ([]byte, error)
+
+func zeroPtr[T any]() *T {
+	var v T
+	return &v
+}
+
+func RPC[Req any, Res any](transport TransportFunc, name string, req *Req) (res *Res, err error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	msg := message{
+		Cmd:  name,
+		Body: body,
+	}
+	b, err := json.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	b, err = transport(b)
+	if err != nil {
+		return nil, err
+	}
+
+	res = zeroPtr[Res]()
+	if err := json.Unmarshal(b, res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+./rpc/tcp_server.go
+package rpc
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"net"
+	"sync"
+	"time"
+)
+
+const (
+	TCP_TIMEOUT = 10 * time.Second
+)
+
+type TCPServer interface {
+	Handle(input []byte) (output []byte, err error)
+	ListenAndServe() error
+	Register(name string, h any) TCPServer
+	Close() error
+}
+
+func TCPTransport(addr string) TransportFunc {
+	return func(input []byte) (output []byte, err error) {
+		conn, err := net.Dial("tcp", addr)
+		if err != nil {
+			return nil, err
+		}
+		defer conn.Close()
+
+		err = conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
+		if err != nil {
+			return
+		}
+
+		conn.Write(input)
+		conn.Write([]byte("\n")) // '\n' notifies end of input
+		output, err = io.ReadAll(conn)
+		return output, err
+	}
+}
+
+type tcpServer struct {
+	mu         sync.Mutex
+	dispatcher Dispatcher
+	listener   net.Listener
+}
+
+func NewTCPServer(bindAddr string) (TCPServer, error) {
+	listener, err := net.Listen("tcp", bindAddr)
+	if err != nil {
+		return nil, err
+	}
+	return &tcpServer{
+		mu:         sync.Mutex{},
+		dispatcher: NewDispatcher(),
+		listener:   listener,
+	}, nil
+}
+
+func (s *tcpServer) Close() error {
+	return s.listener.Close()
+}
+
+func (s *tcpServer) Handle(input []byte) (output []byte, err error) {
+	return s.dispatcher.Handle(input)
+}
+
+func (s *tcpServer) Register(name string, h any) TCPServer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dispatcher.Register(name, h)
+	return s
+}
+
+func (s *tcpServer) handleConn(conn net.Conn) {
+	defer conn.Close()
+	err := conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
+	if err != nil {
+		return
+	}
+
+	msg, err := bufio.NewReader(conn).ReadString('\n') // read until '\n'
+	if err != nil {
+		return
+	}
+	b := []byte(msg)
+	{
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		b, err = s.dispatcher.Handle(b)
+	}
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	_, err = conn.Write(b)
+	if err != nil {
+		return
+	}
+}
+
+func (s *tcpServer) ListenAndServe() error {
+	for {
+		conn, err := s.listener.Accept()
+		if err != nil {
+			return err
+		}
+		go s.handleConn(conn)
+	}
+}
+./dist_kvstore/util.go
+package dist_kvstore
+
+import "fmt"
+
+func combineErrors(errs ...error) error {
+	var errorList []error
+
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		errorList = append(errorList, err)
+	}
+	if len(errorList) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%v", errorList)
+}
+./dist_kvstore/http.go
+package dist_kvstore
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
+)
+
+type versionedValue struct {
+	Val string `json:"val"`
+	Ver uint64 `json:"ver"`
+}
+
+func HttpHandle(ds Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/kvstore/") {
+			http.NotFound(w, r)
+			return
+		}
+		defer r.Body.Close()
+
+		key, _ := strings.CutPrefix(r.URL.Path, "/kvstore/")
+		if len(key) == 0 {
+			b, err := json.Marshal(ds.Keys())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			_, err = w.Write(b)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			cmd := ds.Get(Cmd{
+				Key: key,
+			})
+			b, err := json.Marshal(cmd)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			_, err = w.Write(b)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		case http.MethodPost, http.MethodPut:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			v := versionedValue{}
+			err = json.Unmarshal(body, &v)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			cmd := Cmd{
+				Key: key,
+				Val: v.Val,
+				Ver: v.Ver,
+			}
+
+			ds.Set(cmd)
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.Error(w, "method must be GET POST PUT", http.StatusBadRequest)
+		}
+
+	}
+}
 ./dist_kvstore/kvstore.go
 package dist_kvstore
 
@@ -495,96 +963,160 @@ func (ds *store) Keys() []string {
 		return ds.memStore.Keys()
 	}).([]string)
 }
-./dist_kvstore/util.go
-package dist_kvstore
+./paxos/message.go
+package paxos
 
-import "fmt"
-
-func combineErrors(errs ...error) error {
-	var errorList []error
-
-	for _, err := range errs {
-		if err == nil {
-			continue
-		}
-		errorList = append(errorList, err)
-	}
-	if len(errorList) == 0 {
-		return nil
-	}
-	return fmt.Errorf("%v", errorList)
+type Request interface {
 }
-./dist_kvstore/http.go
-package dist_kvstore
+
+type Response interface {
+}
+type PrepareRequest struct {
+	LogId    LogId          `json:"log_id"`
+	Proposal ProposalNumber `json:"proposal"`
+}
+
+type PrepareResponse struct {
+	Proposal ProposalNumber `json:"proposal"`
+	Ok       bool           `json:"ok"`
+}
+
+type AcceptRequest[T any] struct {
+	LogId    LogId          `json:"log_id"`
+	Proposal ProposalNumber `json:"proposal"`
+	Value    T              `json:"value"`
+}
+
+type AcceptResponse struct {
+	Proposal ProposalNumber `json:"proposal"`
+	Ok       bool           `json:"ok"`
+}
+
+type CommitRequest[T any] struct {
+	LogId LogId `json:"log_id"`
+	Value T     `json:"value"`
+}
+
+type CommitResponse struct {
+}
+
+type PollRequest struct {
+	LogId LogId `json:"log_id"`
+}
+
+type PollResponse[T any] struct {
+	Promise Promise[T] `json:"promise"`
+}
+./paxos/acceptor.go
+package paxos
 
 import (
-	"encoding/json"
-	"io"
-	"net/http"
-	"strings"
+	"sync"
+
+	"github.com/khanh101/paxos/kvstore"
 )
 
-type versionedValue struct {
-	Val string `json:"val"`
-	Ver uint64 `json:"ver"`
+type Acceptor[T any] interface {
+	Get(logId LogId) (val T, ok bool)
+	Next() LogId
+	Handle(req Request) (res Response)
+	Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func())
 }
 
-func HttpHandle(ds Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/kvstore/") {
-			http.NotFound(w, r)
-			return
-		}
-		defer r.Body.Close()
+func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+	return (&acceptor[T]{
+		mu: sync.Mutex{},
+		acceptor: &simpleAcceptor[T]{
+			log: log,
+		},
+		smallestUnapplied: 0,
+		subscriberCount:   0,
+		subscriberMap:     make(map[uint64]func(logId LogId, value T)),
+	}).updateLocalCommitWithoutLock()
+}
 
-		key, _ := strings.CutPrefix(r.URL.Path, "/kvstore/")
-		if len(key) == 0 {
-			b, err := json.Marshal(ds.Keys())
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			_, err = w.Write(b)
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-			cmd := ds.Get(Cmd{
-				Key: key,
-			})
-			b, err := json.Marshal(cmd)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			_, err = w.Write(b)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		case http.MethodPost, http.MethodPut:
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			v := versionedValue{}
-			err = json.Unmarshal(body, &v)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			cmd := Cmd{
-				Key: key,
-				Val: v.Val,
-				Ver: v.Ver,
-			}
+// acceptor - paxos acceptor must be persistent
+type acceptor[T any] struct {
+	mu                   sync.Mutex
+	acceptor             *simpleAcceptor[T]
+	smallestUncompressed LogId
+	smallestUnapplied    LogId
+	subscriberCount      uint64
+	subscriberMap        map[uint64]func(logId LogId, value T)
+}
 
-			ds.Set(cmd)
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.Error(w, "method must be GET POST PUT", http.StatusBadRequest)
+func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
+	for {
+		promise := a.acceptor.get(a.smallestUnapplied)
+		if promise.Proposal != COMMITTED {
+			break
 		}
+		for _, subscriber := range a.subscriberMap {
+			subscriber(a.smallestUnapplied, promise.Value)
+		}
+		a.smallestUnapplied++
+	}
+	return a
+}
 
+func (a *acceptor[T]) Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.smallestUnapplied < init {
+		panic("subscribe from a future log_id")
+	}
+	for logId := init; logId < a.smallestUnapplied; logId++ {
+		subscriber(logId, a.acceptor.get(logId).Value)
+	}
+	count := a.subscriberCount
+	a.subscriberCount++
+	a.subscriberMap[count] = subscriber
+	return func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		delete(a.subscriberMap, count)
+	}
+}
+
+func (a *acceptor[T]) Get(logId LogId) (T, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	promise := a.acceptor.get(logId)
+	return promise.Value, promise.Proposal == COMMITTED
+}
+
+func (a *acceptor[T]) Next() LogId {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.updateLocalCommitWithoutLock().smallestUnapplied
+}
+func (a *acceptor[T]) Handle(r Request) Response {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	switch req := r.(type) {
+	case *PrepareRequest:
+		proposal, ok := a.acceptor.prepare(req.LogId, req.Proposal)
+		return &PrepareResponse{
+			Proposal: proposal,
+			Ok:       ok,
+		}
+	case *AcceptRequest[T]:
+		proposal, ok := a.acceptor.accept(req.LogId, req.Proposal, req.Value)
+		return &AcceptResponse{
+			Proposal: proposal,
+			Ok:       ok,
+		}
+	case *CommitRequest[T]:
+		a.acceptor.commit(req.LogId, req.Value)
+		a.updateLocalCommitWithoutLock()
+		return nil
+	case *PollRequest:
+		promise := a.acceptor.get(req.LogId)
+		return &PollResponse[T]{
+			Promise: promise,
+		}
+	default:
+		return nil
 	}
 }
 ./paxos/simple_acceptor.go
@@ -683,160 +1215,6 @@ func (a *simpleAcceptor[T]) accept(logId LogId, proposal ProposalNumber, value T
 		return [2]any{proposal, true}
 	}).([2]any)
 	return r[0].(ProposalNumber), r[1].(bool)
-}
-./paxos/acceptor.go
-package paxos
-
-import (
-	"github.com/khanh101/paxos/kvstore"
-	"sync"
-)
-
-type Acceptor[T any] interface {
-	Get(logId LogId) (val T, ok bool)
-	Next() LogId
-	Handle(req Request) (res Response)
-	Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func())
-}
-
-func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
-	return (&acceptor[T]{
-		mu: sync.Mutex{},
-		acceptor: &simpleAcceptor[T]{
-			log: log,
-		},
-		smallestUnapplied: 0,
-		subscriberCount:   0,
-		subscriberMap:     make(map[uint64]func(logId LogId, value T)),
-	}).updateLocalCommitWithoutLock()
-}
-
-// acceptor - paxos acceptor must be persistent
-type acceptor[T any] struct {
-	mu                sync.Mutex
-	acceptor          *simpleAcceptor[T]
-	smallestUnapplied LogId
-	subscriberCount   uint64
-	subscriberMap     map[uint64]func(logId LogId, value T)
-}
-
-func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
-	for {
-		promise := a.acceptor.get(a.smallestUnapplied)
-		if promise.Proposal != COMMITTED {
-			break
-		}
-		for _, subscriber := range a.subscriberMap {
-			subscriber(a.smallestUnapplied, promise.Value)
-		}
-		a.smallestUnapplied++
-	}
-	return a
-}
-
-func (a *acceptor[T]) Subscribe(init LogId, subscriber func(logId LogId, value T)) (cancel func()) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.smallestUnapplied < init {
-		panic("subscribe from a future log_id")
-	}
-	for logId := init; logId < a.smallestUnapplied; logId++ {
-		subscriber(logId, a.acceptor.get(logId).Value)
-	}
-	count := a.subscriberCount
-	a.subscriberCount++
-	a.subscriberMap[count] = subscriber
-	return func() {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		delete(a.subscriberMap, count)
-	}
-}
-
-func (a *acceptor[T]) Get(logId LogId) (T, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	promise := a.acceptor.get(logId)
-	return promise.Value, promise.Proposal == COMMITTED
-}
-
-func (a *acceptor[T]) Next() LogId {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.updateLocalCommitWithoutLock().smallestUnapplied
-}
-func (a *acceptor[T]) Handle(r Request) Response {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	switch req := r.(type) {
-	case *PrepareRequest:
-		proposal, ok := a.acceptor.prepare(req.LogId, req.Proposal)
-		return &PrepareResponse{
-			Proposal: proposal,
-			Ok:       ok,
-		}
-	case *AcceptRequest[T]:
-		proposal, ok := a.acceptor.accept(req.LogId, req.Proposal, req.Value)
-		return &AcceptResponse{
-			Proposal: proposal,
-			Ok:       ok,
-		}
-	case *CommitRequest[T]:
-		a.acceptor.commit(req.LogId, req.Value)
-		a.updateLocalCommitWithoutLock()
-		return nil
-	case *PollRequest:
-		promise := a.acceptor.get(req.LogId)
-		return &PollResponse[T]{
-			Promise: promise,
-		}
-	default:
-		return nil
-	}
-}
-./paxos/message.go
-package paxos
-
-type Request interface {
-}
-
-type Response interface {
-}
-type PrepareRequest struct {
-	LogId    LogId          `json:"log_id"`
-	Proposal ProposalNumber `json:"proposal"`
-}
-
-type PrepareResponse struct {
-	Proposal ProposalNumber `json:"proposal"`
-	Ok       bool           `json:"ok"`
-}
-
-type AcceptRequest[T any] struct {
-	LogId    LogId          `json:"log_id"`
-	Proposal ProposalNumber `json:"proposal"`
-	Value    T              `json:"value"`
-}
-
-type AcceptResponse struct {
-	Proposal ProposalNumber `json:"proposal"`
-	Ok       bool           `json:"ok"`
-}
-
-type CommitRequest[T any] struct {
-	LogId LogId `json:"log_id"`
-	Value T     `json:"value"`
-}
-
-type CommitResponse struct {
-}
-
-type PollRequest struct {
-	LogId LogId `json:"log_id"`
-}
-
-type PollResponse[T any] struct {
-	Promise Promise[T] `json:"promise"`
 }
 ./paxos/proposer.go
 package paxos
@@ -999,382 +1377,6 @@ func LogCompact[T any](rpcList []RPC) {
 	// TODO
 	// 1. send request to get smallest logId
 	// 2. emit log compaction request
-}
-./kvstore/mem_store.go
-package kvstore
-
-import "sync"
-
-func NewMemStore[K comparable, V any]() MemStore[K, V] {
-	return &memStore[K, V]{
-		mu:    sync.Mutex{},
-		store: make(map[K]V),
-	}
-}
-
-type memStore[K comparable, V any] struct {
-	mu    sync.Mutex
-	store map[K]V
-}
-
-func (m *memStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return update(m)
-}
-
-func (m *memStore[K, V]) Keys() (keys []K) {
-	keys = make([]K, 0, len(m.store))
-	for k := range m.store {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-func (m *memStore[K, V]) Get(k K) (v V, ok bool) {
-	v, ok = m.store[k]
-	return v, ok
-}
-
-func (m *memStore[K, V]) Set(k K, v V) {
-	m.store[k] = v
-}
-
-func (m *memStore[K, V]) Del(k K) {
-	delete(m.store, k)
-}
-./kvstore/store.go
-package kvstore
-
-type Txn[K comparable, V any] interface {
-	Get(k K) (v V, ok bool)
-	Set(k K, v V)
-	Del(k K)
-}
-
-// Store - threadsafe stable store
-type Store[K comparable, V any] interface {
-	Update(update func(txn Txn[K, V]) any) any
-}
-
-type MemStore[K comparable, V any] interface {
-	Store[K, V]
-	Keys() []K
-}
-./kvstore/barger_store.go
-package kvstore
-
-import (
-	"encoding/json"
-	"errors"
-	"github.com/dgraph-io/badger/v4"
-	"sync"
-)
-
-func NewBargerStore[K comparable, V any](db *badger.DB) Store[K, V] {
-	return &badgerStore[K, V]{
-		mu: sync.Mutex{},
-		db: db,
-	}
-}
-
-type badgerStore[K comparable, V any] struct {
-	mu sync.Mutex
-	db *badger.DB
-}
-
-type badgerTxn[K comparable, V any] struct {
-	txn *badger.Txn
-}
-
-func (b *badgerTxn[K, V]) Get(k K) (v V, ok bool) {
-	kb, err := json.Marshal(k)
-	if err != nil {
-		panic(err)
-	}
-	i, err := b.txn.Get(kb)
-	if errors.Is(err, badger.ErrKeyNotFound) {
-		return v, false
-	}
-	if err != nil {
-		panic(err)
-	}
-	err = i.Value(func(val []byte) error {
-		return json.Unmarshal(val, &v)
-	})
-	if err != nil {
-		panic(err)
-	}
-	return v, true
-}
-
-func (b *badgerTxn[K, V]) Set(k K, v V) {
-	kb, err := json.Marshal(k)
-	if err != nil {
-		panic(err)
-	}
-	vb, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	err = b.txn.Set(kb, vb)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (b *badgerTxn[K, V]) Del(k K) {
-	kb, err := json.Marshal(k)
-	if err != nil {
-		panic(err)
-	}
-	err = b.txn.Delete(kb)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (b *badgerStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	var out any
-	_ = b.db.Update(func(txn *badger.Txn) error {
-		out = update(&badgerTxn[K, V]{txn: txn})
-		return nil
-	})
-	return out
-}
-
-func (b *badgerStore[K, V]) Close() {
-	err := b.db.Close()
-	if err != nil {
-		panic(err)
-	}
-}
-./rpc/dispatcher.go
-package rpc
-
-import (
-	"encoding/json"
-	"fmt"
-	"reflect"
-)
-
-type Dispatcher interface {
-	Register(name string, h any) Dispatcher
-	Handle(input []byte) (output []byte, err error)
-}
-
-func NewDispatcher() Dispatcher {
-	return &dispatcher{
-		handlerMap: make(map[string]handler),
-	}
-}
-
-type message struct {
-	Cmd  string `json:"cmd"`
-	Body []byte `json:"body"`
-}
-
-type handler struct {
-	handlerFunc reflect.Value
-	argType     reflect.Type
-}
-
-type dispatcher struct {
-	handlerMap map[string]handler
-}
-
-func (d *dispatcher) Register(name string, h any) Dispatcher {
-	handlerFunc := reflect.ValueOf(h)
-	handlerFuncType := handlerFunc.Type()
-	if handlerFuncType.Kind() != reflect.Func || handlerFuncType.NumIn() != 1 || handlerFuncType.NumOut() != 1 {
-		panic("handler must be of form func(*SomeRequest) *SomeResponse")
-	}
-	argType := handlerFuncType.In(0)
-	if argType.Kind() != reflect.Ptr || handlerFuncType.Out(0).Kind() != reflect.Ptr {
-		panic("handler arguments and return type must be pointers")
-	}
-	d.handlerMap[name] = handler{
-		handlerFunc: handlerFunc,
-		argType:     argType,
-	}
-	return d
-}
-
-func (d *dispatcher) Handle(input []byte) (output []byte, err error) {
-	msg := message{}
-	if err := json.Unmarshal(input, &msg); err != nil {
-		return nil, err
-	}
-
-	h, ok := d.handlerMap[msg.Cmd]
-	if !ok {
-		return nil, fmt.Errorf("command not found")
-	}
-
-	argPtr := reflect.New(h.argType.Elem()).Interface()
-	if err := json.Unmarshal(msg.Body, argPtr); err != nil {
-		return nil, err
-	}
-
-	out := h.handlerFunc.Call([]reflect.Value{reflect.ValueOf(argPtr)})[0].Interface()
-
-	output, err = json.Marshal(out)
-	if err != nil {
-		return nil, err
-	}
-	return output, nil
-}
-./rpc/tcp_server.go
-package rpc
-
-import (
-	"bufio"
-	"fmt"
-	"io"
-	"net"
-	"sync"
-	"time"
-)
-
-const (
-	TCP_TIMEOUT = 10 * time.Second
-)
-
-type TCPServer interface {
-	Handle(input []byte) (output []byte, err error)
-	ListenAndServe() error
-	Register(name string, h any) TCPServer
-	Close() error
-}
-
-func TCPTransport(addr string) TransportFunc {
-	return func(input []byte) (output []byte, err error) {
-		conn, err := net.Dial("tcp", addr)
-		if err != nil {
-			return nil, err
-		}
-		defer conn.Close()
-
-		err = conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
-		if err != nil {
-			return
-		}
-
-		conn.Write(input)
-		conn.Write([]byte("\n")) // '\n' notifies end of input
-		output, err = io.ReadAll(conn)
-		return output, err
-	}
-}
-
-type tcpServer struct {
-	mu         sync.Mutex
-	dispatcher Dispatcher
-	listener   net.Listener
-}
-
-func NewTCPServer(bindAddr string) (TCPServer, error) {
-	listener, err := net.Listen("tcp", bindAddr)
-	if err != nil {
-		return nil, err
-	}
-	return &tcpServer{
-		mu:         sync.Mutex{},
-		dispatcher: NewDispatcher(),
-		listener:   listener,
-	}, nil
-}
-
-func (s *tcpServer) Close() error {
-	return s.listener.Close()
-}
-
-func (s *tcpServer) Handle(input []byte) (output []byte, err error) {
-	return s.dispatcher.Handle(input)
-}
-
-func (s *tcpServer) Register(name string, h any) TCPServer {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.dispatcher.Register(name, h)
-	return s
-}
-
-func (s *tcpServer) handleConn(conn net.Conn) {
-	defer conn.Close()
-	err := conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
-	if err != nil {
-		return
-	}
-
-	msg, err := bufio.NewReader(conn).ReadString('\n') // read until '\n'
-	if err != nil {
-		return
-	}
-	b := []byte(msg)
-	{
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		b, err = s.dispatcher.Handle(b)
-	}
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	_, err = conn.Write(b)
-	if err != nil {
-		return
-	}
-}
-
-func (s *tcpServer) ListenAndServe() error {
-	for {
-		conn, err := s.listener.Accept()
-		if err != nil {
-			return err
-		}
-		go s.handleConn(conn)
-	}
-}
-./rpc/rpc.go
-package rpc
-
-import (
-	"encoding/json"
-)
-
-type TransportFunc func([]byte) ([]byte, error)
-
-func zeroPtr[T any]() *T {
-	var v T
-	return &v
-}
-
-func RPC[Req any, Res any](transport TransportFunc, name string, req *Req) (res *Res, err error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	msg := message{
-		Cmd:  name,
-		Body: body,
-	}
-	b, err := json.Marshal(msg)
-	if err != nil {
-		return nil, err
-	}
-	b, err = transport(b)
-	if err != nil {
-		return nil, err
-	}
-
-	res = zeroPtr[Res]()
-	if err := json.Unmarshal(b, res); err != nil {
-		return nil, err
-	}
-	return res, nil
 }
 ./main.go
 package main

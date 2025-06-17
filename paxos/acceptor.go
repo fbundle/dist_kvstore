@@ -1,8 +1,9 @@
 package paxos
 
 import (
-	"github.com/khanh101/paxos/kvstore"
 	"sync"
+
+	"github.com/khanh101/paxos/kvstore"
 )
 
 type Acceptor[T any] interface {
@@ -26,11 +27,12 @@ func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 
 // acceptor - paxos acceptor must be persistent
 type acceptor[T any] struct {
-	mu                sync.Mutex
-	acceptor          *simpleAcceptor[T]
-	smallestUnapplied LogId
-	subscriberCount   uint64
-	subscriberMap     map[uint64]func(logId LogId, value T)
+	mu                   sync.Mutex
+	acceptor             *simpleAcceptor[T]
+	smallestUncompressed LogId
+	smallestUnapplied    LogId
+	subscriberCount      uint64
+	subscriberMap        map[uint64]func(logId LogId, value T)
 }
 
 func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
