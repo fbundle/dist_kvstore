@@ -2,7 +2,7 @@
 
 implementation of distributed kvstore using paxos
 
-paxos is easier to understand and prove. raft is unnecessarily complicated
+paxos is easier to understand and prove unlike raft
 
 [proof](https://github.com/khanh101/khanh101.github.io/blob/master/blog/pdf/paxos-algorithm.pdf)
 
