@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/subscriber"
 )
 
 type StateMachine[T any] func(logId LogId, value T)
@@ -24,13 +23,11 @@ type Acceptor[T any] interface {
 
 func NewAcceptor[T any](smallestUnapplied LogId, log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 	return (&acceptor[T]{
-		mu: sync.Mutex{},
-		acceptor: &simpleAcceptor[T]{
-			log: log,
-		},
+		mu:                sync.Mutex{},
+		acceptor:          &simpleAcceptor[T]{log: log},
 		snapshot:          smallestUnapplied - 1,
 		smallestUnapplied: smallestUnapplied,
-		subscriberPool:    subscriber.NewPool[StateMachine[T]](),
+		subsciber:         nil,
 	}).updateLocalCommitWithoutLock()
 }
 
@@ -40,7 +37,7 @@ type acceptor[T any] struct {
 	acceptor          *simpleAcceptor[T]
 	snapshot          LogId
 	smallestUnapplied LogId
-	subscriberPool    subscriber.SubscriberPool[StateMachine[T]]
+	subsciber         StateMachine[T]
 }
 
 func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
@@ -49,9 +46,9 @@ func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
 		if promise.Proposal != COMMITTED {
 			break
 		}
-		a.subscriberPool.Iterate(func(sm StateMachine[T]) {
-			sm(a.smallestUnapplied, promise.Value)
-		})
+		if a.subsciber != nil {
+			a.subsciber(a.smallestUnapplied, promise.Value)
+		}
 		a.smallestUnapplied++
 	}
 	return a
@@ -60,10 +57,19 @@ func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
 func (a *acceptor[T]) Subscribe(sm StateMachine[T]) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for logId := a.snapshot; logId < a.smallestUnapplied; logId++ {
-		sm(logId, a.acceptor.get(logId).Value)
+	if a.subsciber != nil {
+		panic("cannot subscribe twice")
 	}
-	return a.subscriberPool.Subscribe(sm)
+	a.subsciber = sm
+
+	for logId := a.snapshot; logId < a.smallestUnapplied; logId++ {
+		a.subsciber(logId, a.acceptor.get(logId).Value)
+	}
+	return func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		a.subsciber = nil
+	}
 }
 
 func (a *acceptor[T]) Get(logId LogId) (T, bool) {
