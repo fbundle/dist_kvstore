@@ -18,6 +18,13 @@ func None[T any]() Option[T] {
 	}
 }
 
+func Bind[T any, T1 any](o Option[T], f func(val T) Option[T1]) Option[T1] {
+	if o.isFull {
+		return f(o.val)
+	}
+	return None[T1]()
+}
+
 type Sum[L any, R any] struct {
 	val any
 }
