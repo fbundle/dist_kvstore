@@ -28,7 +28,7 @@ type Store interface {
 
 func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[Cmd]) func(*Req) *Res {
 	return func(req *Req) *Res {
-		res := acceptor.Handle(req)
+		res := acceptor.HandleRPC(req)
 		if res == nil {
 			return nil
 		}
@@ -86,7 +86,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		i := i
 		if i == id {
 			rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
-				resCh <- acceptor.Handle(req)
+				resCh <- acceptor.HandleRPC(req)
 			}
 		} else {
 			rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {

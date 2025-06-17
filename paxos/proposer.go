@@ -61,7 +61,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 		if !commited {
 			break
 		}
-		a.Handle(&CommitRequest[T]{
+		a.HandleRPC(&CommitRequest[T]{
 			LogId: logId,
 			Value: v,
 		})
@@ -84,7 +84,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		}
 	}
 	for {
-		if _, committed := a.Get(logId); committed {
+		if a.Committed(logId) {
 			return false
 		}
 		// prepare
@@ -148,7 +148,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 				Value: value,
 			})
 			// local commit
-			a.Handle(&CommitRequest[T]{
+			a.HandleRPC(&CommitRequest[T]{
 				LogId: logId,
 				Value: value,
 			})

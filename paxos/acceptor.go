@@ -10,7 +10,8 @@ type StateMachine[T any] func(logId LogId, value T)
 
 type Acceptor[T any] interface {
 	// Get - get log entry
-	Get(logId LogId) (val T, ok bool)
+	// Get(logId LogId) (val T, ok bool)
+	Committed(logId LogId) bool
 	// Next - get smallestUnapplied - used to propose
 	Next() LogId
 	// HandleRPC - handle RPC requests
@@ -68,11 +69,11 @@ func (a *acceptor[T]) Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (ca
 	}
 }
 
-func (a *acceptor[T]) Get(logId LogId) (T, bool) {
+func (a *acceptor[T]) Committed(logId LogId) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	promise := a.acceptor.get(logId)
-	return promise.Value, promise.Proposal == COMMITTED
+	return promise.Proposal == COMMITTED
 }
 
 func (a *acceptor[T]) Next() LogId {

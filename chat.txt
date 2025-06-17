@@ -915,7 +915,7 @@ type Store interface {
 
 func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[Cmd]) func(*Req) *Res {
 	return func(req *Req) *Res {
-		res := acceptor.Handle(req)
+		res := acceptor.HandleRPC(req)
 		if res == nil {
 			return nil
 		}
@@ -973,7 +973,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		i := i
 		if i == id {
 			rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
-				resCh <- acceptor.Handle(req)
+				resCh <- acceptor.HandleRPC(req)
 			}
 		} else {
 			rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
@@ -1124,7 +1124,8 @@ type StateMachine[T any] func(logId LogId, value T)
 
 type Acceptor[T any] interface {
 	// Get - get log entry
-	Get(logId LogId) (val T, ok bool)
+	// Get(logId LogId) (val T, ok bool)
+	Committed(logId LogId) bool
 	// Next - get smallestUnapplied - used to propose
 	Next() LogId
 	// HandleRPC - handle RPC requests
@@ -1182,11 +1183,11 @@ func (a *acceptor[T]) Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (ca
 	}
 }
 
-func (a *acceptor[T]) Get(logId LogId) (T, bool) {
+func (a *acceptor[T]) Committed(logId LogId) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	promise := a.acceptor.get(logId)
-	return promise.Value, promise.Proposal == COMMITTED
+	return promise.Proposal == COMMITTED
 }
 
 func (a *acceptor[T]) Next() LogId {
@@ -1384,7 +1385,7 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 		if !commited {
 			break
 		}
-		a.Handle(&CommitRequest[T]{
+		a.HandleRPC(&CommitRequest[T]{
 			LogId: logId,
 			Value: v,
 		})
@@ -1407,7 +1408,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		}
 	}
 	for {
-		if _, committed := a.Get(logId); committed {
+		if a.Committed(logId) {
 			return false
 		}
 		// prepare
@@ -1471,7 +1472,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 				Value: value,
 			})
 			// local commit
-			a.Handle(&CommitRequest[T]{
+			a.HandleRPC(&CommitRequest[T]{
 				LogId: logId,
 				Value: value,
 			})
