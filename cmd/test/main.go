@@ -25,6 +25,7 @@ func testLocal() {
 	// define rpc communication -
 	// drop 80% of requests and responses
 	// in total, 0.96% of requests don't go through
+	// disable waiting in paxos.Write to test this
 	dropRate := 0.80
 	rpcList := make([]paxos.RPC, n)
 	for i := 0; i < n; i++ {
@@ -68,8 +69,8 @@ func testLocal() {
 					// 3. try to write the value to logId
 					// 4. if failed, go back to 1
 					logId := acceptorList[i].Next()
-					ok := paxos.Write(acceptorList[i], paxos.NodeId(i), logId, v, rpcList)
-					if ok {
+					val, ok := paxos.Write(acceptorList[i], paxos.NodeId(i), logId, v, rpcList)
+					if val == v && ok {
 						break
 					}
 					paxos.Update(acceptorList[i], rpcList)
@@ -89,14 +90,6 @@ func testLocal() {
 	// it should print the same 3 lines
 	for i := 0; i < n; i++ {
 		fmt.Println(strings.Join(listenerList[i], ""))
-	}
-
-	// new subscriber from 13
-	for i := 0; i < n; i++ {
-		acceptorList[i].Subscribe(0, func(logId paxos.LogId, value string) {
-			fmt.Printf("%v", value)
-		})
-		fmt.Println()
 	}
 
 	return
@@ -228,5 +221,5 @@ func testRPCTCP() {
 }
 
 func main() {
-	testRPC()
+	testLocal()
 }
