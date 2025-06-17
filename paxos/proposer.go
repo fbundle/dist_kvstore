@@ -166,4 +166,6 @@ func LogCompact[T any](rpcList []RPC) {
 	//    where x stores CompressedCommand
 	// 4. StateMachine applies CompressedCommand is recovering from snapshot
 	// 5. initLogId is used to restore the StateMachine
+
+	// compressLog[T any](ts ...T) T // type signature for log compression where T is type of value
 }
