@@ -35,7 +35,7 @@ func testLocal() {
 					resCh <- nil
 					return
 				}
-				res := acceptorList[i].Handle(req)
+				res := acceptorList[i].HandleRPC(req)
 				if rand.Float64() < dropRate {
 					resCh <- nil
 					return
