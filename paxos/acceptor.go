@@ -6,7 +6,11 @@ import (
 	"github.com/khanh101/paxos/kvstore"
 )
 
-type StateMachine[T any] func(logId LogId, value T)
+type StateMachine[T any] interface {
+	Apply(logId LogId, value T) // apply value
+	Snapshot() T                // snapshot into value
+}
+
 
 type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
@@ -41,7 +45,7 @@ func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
 			break
 		}
 		if a.subsciber != nil {
-			a.subsciber(a.smallestUnapplied, promise.Value)
+			a.subsciber.Apply(a.smallestUnapplied, promise.Value)
 		}
 		a.smallestUnapplied++
 	}
@@ -58,7 +62,7 @@ func (a *acceptor[T]) Subscribe(sm StateMachine[T]) (cancel func()) {
 
 	for logId := a.snapshot; logId < a.smallestUnapplied; logId++ {
 		promise := a.acceptor.get(logId)
-		a.subsciber(logId, promise.Value)
+		a.subsciber.Apply(logId, promise.Value)
 	}
 	return func() {
 		a.mu.Lock()

@@ -36,20 +36,11 @@ func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[Cmd]) func(*Req) 
 	}
 }
 
-type Entry struct {
-	Key string `json:"key"`
-	Val string `json:"val"`
-	Ver uint64 `json:"ver"`
-}
-
-type Cmd struct {
-	Entries []Entry `json:"entries"`
-}
 type store struct {
 	id           paxos.NodeId
 	peerAddrList []string
 	db           *badger.DB
-	memStore     kvstore.MemStore[string, Entry]
+	memStore     *stateMachine
 	acceptor     paxos.Acceptor[Cmd]
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
@@ -77,23 +68,8 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		return nil, err
 	}
 	acceptor := paxos.NewAcceptor(0, kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
-	memStore := kvstore.NewMemStore[string, Entry]()
-	acceptor.Subscribe(func(logId paxos.LogId, cmd Cmd) {
-		memStore.Update(func(txn kvstore.Txn[string, Entry]) any {
-			for _, entry := range cmd.Entries {
-				oldEntry := getDefaultEntry(txn, entry.Key)
-				if entry.Ver <= oldEntry.Ver {
-					continue // ignore update
-				}
-				if len(entry.Val) == 0 {
-					txn.Del(entry.Key)
-				} else {
-					txn.Set(entry.Key, entry)
-				}
-			}
-			return nil
-		})
-	})
+	memStore := newStateMachine()
+	acceptor.Subscribe(memStore)
 
 	server, err := rpc.NewTCPServer(bindAddr)
 	if err != nil {
@@ -198,13 +174,9 @@ func (ds *store) Set(cmd Cmd) {
 }
 
 func (ds *store) Get(key string) Entry {
-	return ds.memStore.Update(func(txn kvstore.Txn[string, Entry]) any {
-		return getDefaultEntry(txn, key)
-	}).(Entry)
+	return ds.memStore.Get(key)
 }
 
 func (ds *store) Keys() []string {
-	return ds.memStore.Update(func(txn kvstore.Txn[string, Entry]) any {
-		return ds.memStore.Keys()
-	}).([]string)
+	return ds.memStore.Keys()
 }

@@ -734,6 +734,78 @@ func combineErrors(errs ...error) error {
 	}
 	return fmt.Errorf("%v", errorList)
 }
+./dist_kvstore/state_machine.go
+package dist_kvstore
+
+import (
+	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/paxos"
+)
+
+type Entry struct {
+	Key string `json:"key"`
+	Val string `json:"val"`
+	Ver uint64 `json:"ver"`
+}
+
+type Cmd struct {
+	Entries []Entry `json:"entries"`
+}
+type stateMachine struct {
+	store kvstore.MemStore[string, Entry]
+}
+
+func newStateMachine() *stateMachine {
+	return &stateMachine{
+		store: kvstore.NewMemStore[string, Entry](),
+	}
+}
+
+func (sm *stateMachine) Get(key string) Entry {
+	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+		return getDefaultEntry(txn, key)
+	}).(Entry)
+}
+
+func (sm *stateMachine) Keys() []string {
+	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+		return sm.store.Keys()
+	}).([]string)
+}
+
+func (sm *stateMachine) Apply(logId paxos.LogId, cmd Cmd) {
+	sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+		for _, entry := range cmd.Entries {
+			oldEntry := getDefaultEntry(txn, entry.Key)
+			if entry.Ver <= oldEntry.Ver {
+				continue // ignore update
+			}
+			if len(entry.Val) == 0 {
+				txn.Del(entry.Key)
+			} else {
+				txn.Set(entry.Key, entry)
+			}
+		}
+		return nil
+	})
+}
+
+func (sm *stateMachine) Snapshot() Cmd {
+	entries := sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+		keys := sm.store.Keys()
+		entries := make([]Entry, 0, len(keys))
+		for _, k := range keys {
+			if v, ok := txn.Get(k); ok {
+				entries = append(entries, v)
+			}
+		}
+		return entries
+	}).([]Entry)
+
+	return Cmd{
+		Entries: entries,
+	}
+}
 ./dist_kvstore/http.go
 package dist_kvstore
 
@@ -851,20 +923,11 @@ func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[Cmd]) func(*Req) 
 	}
 }
 
-type Entry struct {
-	Key string `json:"key"`
-	Val string `json:"val"`
-	Ver uint64 `json:"ver"`
-}
-
-type Cmd struct {
-	Entries []Entry `json:"entries"`
-}
 type store struct {
 	id           paxos.NodeId
 	peerAddrList []string
 	db           *badger.DB
-	memStore     kvstore.MemStore[string, Entry]
+	memStore     *stateMachine
 	acceptor     paxos.Acceptor[Cmd]
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
@@ -892,23 +955,8 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		return nil, err
 	}
 	acceptor := paxos.NewAcceptor(0, kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
-	memStore := kvstore.NewMemStore[string, Entry]()
-	acceptor.Subscribe(func(logId paxos.LogId, cmd Cmd) {
-		memStore.Update(func(txn kvstore.Txn[string, Entry]) any {
-			for _, entry := range cmd.Entries {
-				oldEntry := getDefaultEntry(txn, entry.Key)
-				if entry.Ver <= oldEntry.Ver {
-					continue // ignore update
-				}
-				if len(entry.Val) == 0 {
-					txn.Del(entry.Key)
-				} else {
-					txn.Set(entry.Key, entry)
-				}
-			}
-			return nil
-		})
-	})
+	memStore := newStateMachine()
+	acceptor.Subscribe(memStore)
 
 	server, err := rpc.NewTCPServer(bindAddr)
 	if err != nil {
@@ -1013,15 +1061,29 @@ func (ds *store) Set(cmd Cmd) {
 }
 
 func (ds *store) Get(key string) Entry {
-	return ds.memStore.Update(func(txn kvstore.Txn[string, Entry]) any {
-		return getDefaultEntry(txn, key)
-	}).(Entry)
+	return ds.memStore.Get(key)
 }
 
 func (ds *store) Keys() []string {
-	return ds.memStore.Update(func(txn kvstore.Txn[string, Entry]) any {
-		return ds.memStore.Keys()
-	}).([]string)
+	return ds.memStore.Keys()
+}
+./paxos/util.go
+package paxos
+
+type stateMachineFunc[T any] struct {
+	apply func(logId LogId, value T)
+}
+
+func StateMachineFunc[T any](apply func(logId LogId, value T)) StateMachine[T] {
+	return &stateMachineFunc[T]{apply: apply}
+}
+
+func (sm *stateMachineFunc[T]) Apply(logId LogId, value T) {
+	sm.apply(logId, value)
+}
+
+func (sm *stateMachineFunc[T]) Snapshot() T {
+	panic("state_machine_func doesn't implement snapshot")
 }
 ./paxos/message.go
 package paxos
@@ -1076,7 +1138,11 @@ import (
 	"github.com/khanh101/paxos/kvstore"
 )
 
-type StateMachine[T any] func(logId LogId, value T)
+type StateMachine[T any] interface {
+	Apply(logId LogId, value T) // apply value
+	Snapshot() T                // snapshot into value
+}
+
 
 type Acceptor[T any] interface {
 	Get(logId LogId) (val T, ok bool)
@@ -1111,7 +1177,7 @@ func (a *acceptor[T]) updateLocalCommitWithoutLock() *acceptor[T] {
 			break
 		}
 		if a.subsciber != nil {
-			a.subsciber(a.smallestUnapplied, promise.Value)
+			a.subsciber.Apply(a.smallestUnapplied, promise.Value)
 		}
 		a.smallestUnapplied++
 	}
@@ -1128,7 +1194,7 @@ func (a *acceptor[T]) Subscribe(sm StateMachine[T]) (cancel func()) {
 
 	for logId := a.snapshot; logId < a.smallestUnapplied; logId++ {
 		promise := a.acceptor.get(logId)
-		a.subsciber(logId, promise.Value)
+		a.subsciber.Apply(logId, promise.Value)
 	}
 	return func() {
 		a.mu.Lock()
@@ -1446,10 +1512,7 @@ func LogCompact[T any](rpcList []RPC) {
 	// 5. initLogId is used to restore the StateMachine
 
 	/*
-		type StateMachine[T any] interface{
-			Apply(logId LogId, value T) // apply value
-			Snapshot() T // snapshot into value
-		}
+		
 	*/
 	// compressLog[T any](ts ...T) T // type signature for log compression where T is type of value
 }
