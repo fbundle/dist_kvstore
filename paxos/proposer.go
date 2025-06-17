@@ -105,6 +105,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 					okCount++
 				}
 				if maxProposal <= res.Promise.Proposal {
+					// propagate the value with the highest proposal number
 					maxProposal = res.Promise.Proposal
 					maxValuePtr = res.Promise.Value
 				}
