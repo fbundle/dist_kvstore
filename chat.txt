@@ -81,7 +81,7 @@ func testLocal() {
 	acceptorList := make([]paxos.Acceptor[string], n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i] = paxos.NewAcceptor[string](kvstore.NewMemStore[paxos.LogId, paxos.Promise[string]]())
+		acceptorList[i] = paxos.NewAcceptor[string](0, kvstore.NewMemStore[paxos.LogId, paxos.Promise[string]]())
 	}
 
 	// TODO - make this tcp or http
@@ -882,7 +882,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	if err != nil {
 		return nil, err
 	}
-	acceptor := paxos.NewAcceptor[Cmd](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
+	acceptor := paxos.NewAcceptor[Cmd](0, kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
 	memStore := kvstore.NewMemStore[string, Cmd]()
 	acceptor.Subscribe(func(logId paxos.LogId, cmd Cmd) {
 		memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {
@@ -1075,13 +1075,13 @@ type Acceptor[T any] interface {
 	Subscribe(sm StateMachine[T]) (cancel func())
 }
 
-func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+func NewAcceptor[T any](initLogId LogId, log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 	return (&acceptor[T]{
 		mu: sync.Mutex{},
 		acceptor: &simpleAcceptor[T]{
 			log: log,
 		},
-		smallestUnapplied: 0,
+		smallestUnapplied: initLogId,
 		subscriberPool:    subscriber.NewPool[StateMachine[T]](),
 	}).updateLocalCommitWithoutLock()
 }

@@ -72,7 +72,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	if err != nil {
 		return nil, err
 	}
-	acceptor := paxos.NewAcceptor[Cmd](kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
+	acceptor := paxos.NewAcceptor[Cmd](0, kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
 	memStore := kvstore.NewMemStore[string, Cmd]()
 	acceptor.Subscribe(func(logId paxos.LogId, cmd Cmd) {
 		memStore.Update(func(txn kvstore.Txn[string, Cmd]) any {

@@ -16,13 +16,13 @@ type Acceptor[T any] interface {
 	Subscribe(sm StateMachine[T]) (cancel func())
 }
 
-func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+func NewAcceptor[T any](initLogId LogId, log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
 	return (&acceptor[T]{
 		mu: sync.Mutex{},
 		acceptor: &simpleAcceptor[T]{
 			log: log,
 		},
-		smallestUnapplied: 0,
+		smallestUnapplied: initLogId,
 		subscriberPool:    subscriber.NewPool[StateMachine[T]](),
 	}).updateLocalCommitWithoutLock()
 }
