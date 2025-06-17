@@ -48,6 +48,7 @@ func (a *acceptor[T]) applyCommitWithoutLock() *acceptor[T] {
 
 // Subscribe - subscribe a state machine to log
 // smallestUnapplied is the index when state machine will start getting updates
+// it ignores all previous log entries
 func (a *acceptor[T]) Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

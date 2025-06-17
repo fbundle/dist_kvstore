@@ -81,7 +81,7 @@ func testLocal() {
 	acceptorList := make([]paxos.Acceptor[string], n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i] = paxos.NewAcceptor[string](0, kvstore.NewMemStore[paxos.LogId, paxos.Promise[string]]())
+		acceptorList[i] = paxos.NewAcceptor[string](kvstore.NewMemStore[paxos.LogId, paxos.Promise[string]]())
 	}
 
 	// TODO - make this tcp or http
@@ -111,7 +111,7 @@ func testLocal() {
 	listenerList := make([][]string, n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i].Subscribe(func(logId paxos.LogId, value string) {
+		acceptorList[i].Subscribe(0, func(logId paxos.LogId, value string) {
 			fmt.Printf("acceptor %d log_id %d value %v\n", i, logId, value)
 			listenerList[i] = append(listenerList[i], fmt.Sprintf("%v", value))
 		})
@@ -156,7 +156,7 @@ func testLocal() {
 
 	// new subscriber from 13
 	for i := 0; i < n; i++ {
-		acceptorList[i].Subscribe(func(logId paxos.LogId, value string) {
+		acceptorList[i].Subscribe(0, func(logId paxos.LogId, value string) {
 			fmt.Printf("%v", value)
 		})
 		fmt.Println()
@@ -954,9 +954,9 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 	if err != nil {
 		return nil, err
 	}
-	acceptor := paxos.NewAcceptor(0, kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
+	acceptor := paxos.NewAcceptor(kvstore.NewBargerStore[paxos.LogId, paxos.Promise[Cmd]](db))
 	memStore := newStateMachine()
-	acceptor.Subscribe(memStore.Apply)
+	acceptor.Subscribe(0, memStore.Apply)
 
 	server, err := rpc.NewTCPServer(bindAddr)
 	if err != nil {
@@ -1162,6 +1162,7 @@ func (a *acceptor[T]) applyCommitWithoutLock() *acceptor[T] {
 
 // Subscribe - subscribe a state machine to log
 // smallestUnapplied is the index when state machine will start getting updates
+// it ignores all previous log entries
 func (a *acceptor[T]) Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

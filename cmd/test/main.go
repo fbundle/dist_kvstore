@@ -18,7 +18,7 @@ func testLocal() {
 	acceptorList := make([]paxos.Acceptor[string], n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i] = paxos.NewAcceptor[string](0, kvstore.NewMemStore[paxos.LogId, paxos.Promise[string]]())
+		acceptorList[i] = paxos.NewAcceptor[string](kvstore.NewMemStore[paxos.LogId, paxos.Promise[string]]())
 	}
 
 	// TODO - make this tcp or http
@@ -48,7 +48,7 @@ func testLocal() {
 	listenerList := make([][]string, n)
 	for i := 0; i < n; i++ {
 		i := i
-		acceptorList[i].Subscribe(func(logId paxos.LogId, value string) {
+		acceptorList[i].Subscribe(0, func(logId paxos.LogId, value string) {
 			fmt.Printf("acceptor %d log_id %d value %v\n", i, logId, value)
 			listenerList[i] = append(listenerList[i], fmt.Sprintf("%v", value))
 		})
@@ -93,7 +93,7 @@ func testLocal() {
 
 	// new subscriber from 13
 	for i := 0; i < n; i++ {
-		acceptorList[i].Subscribe(func(logId paxos.LogId, value string) {
+		acceptorList[i].Subscribe(0, func(logId paxos.LogId, value string) {
 			fmt.Printf("%v", value)
 		})
 		fmt.Println()
