@@ -19,7 +19,6 @@ func NewAcceptor[T any](smallestUnapplied LogId, log kvstore.Store[LogId, Promis
 	return (&acceptor[T]{
 		mu:                sync.Mutex{},
 		acceptor:          &simpleAcceptor[T]{log: log},
-		snapshot:          smallestUnapplied - 1,
 		smallestUnapplied: smallestUnapplied,
 		subsciber:         nil,
 	}).applyCommitWithoutLock()
@@ -29,7 +28,6 @@ func NewAcceptor[T any](smallestUnapplied LogId, log kvstore.Store[LogId, Promis
 type acceptor[T any] struct {
 	mu                sync.Mutex
 	acceptor          *simpleAcceptor[T]
-	snapshot          LogId
 	smallestUnapplied LogId
 	subsciber         StateMachine[T]
 }
@@ -56,7 +54,7 @@ func (a *acceptor[T]) Subscribe(sm StateMachine[T]) (cancel func()) {
 	}
 	a.subsciber = sm
 
-	for logId := a.snapshot; logId < a.smallestUnapplied; logId++ {
+	for logId := LogId(0); logId < a.smallestUnapplied; logId++ {
 		promise := a.acceptor.get(logId)
 		a.subsciber(logId, promise.Value)
 	}
