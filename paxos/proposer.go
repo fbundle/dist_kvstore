@@ -87,11 +87,11 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		if _, committed := a.GetValue(logId); committed {
 			return zero[T](), false
 		}
-		var maxValue T                 // non-nil value assigned with maximal proposal number
-		var maxProposal ProposalNumber // maximal promised proposal number on all acceptors - used to choose the next proposal number
-		var okCount int                // number of acceptors promised to this request
+		var highestValue T                 // non-nil value assigned with the highest proposal number
+		var highestProposal ProposalNumber // highest promised proposal number on all acceptors - used to choose the next proposal number
+		var okCount int                    // number of acceptors promised to this request
 		// prepare
-		maxValue, maxProposal, okCount = func() (T, ProposalNumber, int) {
+		highestValue, highestProposal, okCount = func() (T, ProposalNumber, int) {
 			resList := broadcast[*PrepareRequest, *PrepareResponse[T]](rpcList, &PrepareRequest{
 				LogId:    logId,
 				Proposal: proposal,
@@ -116,17 +116,17 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		}()
 
 		if okCount < quorum(n) {
-			maxRound, _ := decompose(maxProposal)
+			maxRound, _ := decompose(highestProposal)
 			proposal = compose(maxRound+1, id)
 			backoff()
 			continue
 		}
 		// accept
-		maxProposal, okCount = func() (ProposalNumber, int) {
+		highestProposal, okCount = func() (ProposalNumber, int) {
 			resList := broadcast[*AcceptRequest[T], *AcceptResponse](rpcList, &AcceptRequest[T]{
 				LogId:    logId,
 				Proposal: proposal,
-				Value:    maxValue,
+				Value:    highestValue,
 			})
 			maxProposal := ProposalNumber(0)
 			okCount := 0
@@ -141,7 +141,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 			return maxProposal, okCount
 		}()
 		if okCount < quorum(n) {
-			maxRound, _ := decompose(maxProposal)
+			maxRound, _ := decompose(highestProposal)
 			proposal = compose(maxRound+1, id)
 			backoff()
 			continue
@@ -151,15 +151,15 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 			// broadcast commit
 			go broadcast[*CommitRequest[T], *CommitResponse](rpcList, &CommitRequest[T]{
 				LogId: logId,
-				Value: maxValue,
+				Value: highestValue,
 			})
 			// local commit
 			a.HandleRPC(&CommitRequest[T]{
 				LogId: logId,
-				Value: maxValue,
+				Value: highestValue,
 			})
 		}()
-		return maxValue, true
+		return highestValue, true
 	}
 }
 

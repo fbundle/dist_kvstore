@@ -57,32 +57,34 @@ func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
 	})
 }
 
-func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (ProposalNumber, *T) {
-	promise := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (Promise[T], bool) {
+	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		p := getDefaultLogEntry(txn, logId)
-		if p.Proposal < proposal { // fulfill promise
-			p = Promise[T]{
-				Proposal: proposal,
-				Value:    p.Value,
-			}
+		if !(p.Proposal < proposal) {
+			return [2]any{p, false}
 		}
-		txn.Set(logId, p)
-		return p
-	}).(Promise[T])
-	return promise.Proposal, promise.Value
+		txn.Set(logId, Promise[T]{
+			Proposal: proposal,
+			Value:    p.Value,
+		})
+		return [2]any{p, true}
+	}).([2]any)
+	promise, ok := r[0].(Promise[T]), r[1].(bool)
+	return promise, ok
 }
 
-func (a *simpleAcceptor[T]) accept(logId LogId, proposal ProposalNumber, value T) ProposalNumber {
-	promise := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+func (a *simpleAcceptor[T]) accept(logId LogId, proposal ProposalNumber, value T) (Promise[T], bool) {
+	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		p := getDefaultLogEntry(txn, logId)
-		if p.Proposal <= proposal { // fulfill promise
-			p = Promise[T]{
-				Proposal: proposal,
-				Value:    &value,
-			}
+		if !(p.Proposal <= proposal) {
+			return [2]any{p, false}
 		}
-		txn.Set(logId, p)
-		return p
-	}).(Promise[T])
-	return promise.Proposal
+		txn.Set(logId, Promise[T]{
+			Proposal: proposal,
+			Value:    &value,
+		})
+		return [2]any{p, true}
+	}).([2]any)
+	promise, ok := r[0].(Promise[T]), r[1].(bool)
+	return promise, ok
 }

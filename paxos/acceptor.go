@@ -89,15 +89,16 @@ func (a *acceptor[T]) HandleRPC(r Request) Response {
 	defer a.mu.Unlock()
 	switch req := r.(type) {
 	case *PrepareRequest:
-		proposal, value := a.acceptor.prepare(req.LogId, req.Proposal)
+		promise, ok := a.acceptor.prepare(req.LogId, req.Proposal)
 		return &PrepareResponse[T]{
-			Proposal: proposal,
-			Value:    value,
+			Promise: promise,
+			Ok:      ok,
 		}
 	case *AcceptRequest[T]:
-		proposal := a.acceptor.accept(req.LogId, req.Proposal, req.Value)
-		return &AcceptResponse{
-			Proposal: proposal,
+		promise, ok := a.acceptor.accept(req.LogId, req.Proposal, req.Value)
+		return &AcceptResponse[T]{
+			Promise: promise,
+			Ok:      ok,
 		}
 	case *CommitRequest[T]:
 		a.acceptor.commit(req.LogId, req.Value)

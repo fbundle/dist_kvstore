@@ -700,34 +700,36 @@ func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
 	})
 }
 
-func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (ProposalNumber, *T) {
-	promise := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+func (a *simpleAcceptor[T]) prepare(logId LogId, proposal ProposalNumber) (Promise[T], bool) {
+	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		p := getDefaultLogEntry(txn, logId)
-		if p.Proposal < proposal { // fulfill promise
-			p = Promise[T]{
-				Proposal: proposal,
-				Value:    p.Value,
-			}
+		if !(p.Proposal < proposal) {
+			return [2]any{p, false}
 		}
-		txn.Set(logId, p)
-		return p
-	}).(Promise[T])
-	return promise.Proposal, promise.Value
+		txn.Set(logId, Promise[T]{
+			Proposal: proposal,
+			Value:    p.Value,
+		})
+		return [2]any{p, true}
+	}).([2]any)
+	promise, ok := r[0].(Promise[T]), r[1].(bool)
+	return promise, ok
 }
 
-func (a *simpleAcceptor[T]) accept(logId LogId, proposal ProposalNumber, value T) ProposalNumber {
-	promise := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+func (a *simpleAcceptor[T]) accept(logId LogId, proposal ProposalNumber, value T) (Promise[T], bool) {
+	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		p := getDefaultLogEntry(txn, logId)
-		if p.Proposal <= proposal { // fulfill promise
-			p = Promise[T]{
-				Proposal: proposal,
-				Value:    &value,
-			}
+		if !(p.Proposal <= proposal) {
+			return [2]any{p, false}
 		}
-		txn.Set(logId, p)
-		return p
-	}).(Promise[T])
-	return promise.Proposal
+		txn.Set(logId, Promise[T]{
+			Proposal: proposal,
+			Value:    &value,
+		})
+		return [2]any{p, true}
+	}).([2]any)
+	promise, ok := r[0].(Promise[T]), r[1].(bool)
+	return promise, ok
 }
 ./paxos/acceptor.go
 package paxos
@@ -821,15 +823,16 @@ func (a *acceptor[T]) HandleRPC(r Request) Response {
 	defer a.mu.Unlock()
 	switch req := r.(type) {
 	case *PrepareRequest:
-		proposal, value := a.acceptor.prepare(req.LogId, req.Proposal)
+		promise, ok := a.acceptor.prepare(req.LogId, req.Proposal)
 		return &PrepareResponse[T]{
-			Proposal: proposal,
-			Value:    value,
+			Promise: promise,
+			Ok:      ok,
 		}
 	case *AcceptRequest[T]:
-		proposal := a.acceptor.accept(req.LogId, req.Proposal, req.Value)
-		return &AcceptResponse{
-			Proposal: proposal,
+		promise, ok := a.acceptor.accept(req.LogId, req.Proposal, req.Value)
+		return &AcceptResponse[T]{
+			Promise: promise,
+			Ok:      ok,
 		}
 	case *CommitRequest[T]:
 		a.acceptor.commit(req.LogId, req.Value)
@@ -859,8 +862,8 @@ type PrepareRequest struct {
 }
 
 type PrepareResponse[T any] struct {
-	Proposal ProposalNumber `json:"proposal"`
-	Value    *T             `json:"value"`
+	Promise Promise[T] `json:"promise"`
+	Ok      bool       `json:"ok"`
 }
 
 type AcceptRequest[T any] struct {
@@ -869,8 +872,9 @@ type AcceptRequest[T any] struct {
 	Value    T              `json:"value"`
 }
 
-type AcceptResponse struct {
-	Proposal ProposalNumber `json:"proposal"`
+type AcceptResponse[T any] struct {
+	Promise Promise[T] `json:"promise"`
+	Ok      bool       `json:"ok"`
 }
 
 type CommitRequest[T any] struct {
@@ -979,11 +983,11 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		if _, committed := a.GetValue(logId); committed {
 			return zero[T](), false
 		}
-		var maxValue T                 // non-nil value assigned with maximal proposal number
-		var maxProposal ProposalNumber // maximal promised proposal number on all acceptors - used to choose the next proposal number
-		var okCount int                // number of acceptors promised to this request
+		var highestValue T                 // non-nil value assigned with the highest proposal number
+		var highestProposal ProposalNumber // highest promised proposal number on all acceptors - used to choose the next proposal number
+		var okCount int                    // number of acceptors promised to this request
 		// prepare
-		maxValue, maxProposal, okCount = func() (T, ProposalNumber, int) {
+		highestValue, highestProposal, okCount = func() (T, ProposalNumber, int) {
 			resList := broadcast[*PrepareRequest, *PrepareResponse[T]](rpcList, &PrepareRequest{
 				LogId:    logId,
 				Proposal: proposal,
@@ -1008,17 +1012,17 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		}()
 
 		if okCount < quorum(n) {
-			maxRound, _ := decompose(maxProposal)
+			maxRound, _ := decompose(highestProposal)
 			proposal = compose(maxRound+1, id)
 			backoff()
 			continue
 		}
 		// accept
-		maxProposal, okCount = func() (ProposalNumber, int) {
+		highestProposal, okCount = func() (ProposalNumber, int) {
 			resList := broadcast[*AcceptRequest[T], *AcceptResponse](rpcList, &AcceptRequest[T]{
 				LogId:    logId,
 				Proposal: proposal,
-				Value:    maxValue,
+				Value:    highestValue,
 			})
 			maxProposal := ProposalNumber(0)
 			okCount := 0
@@ -1033,7 +1037,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 			return maxProposal, okCount
 		}()
 		if okCount < quorum(n) {
-			maxRound, _ := decompose(maxProposal)
+			maxRound, _ := decompose(highestProposal)
 			proposal = compose(maxRound+1, id)
 			backoff()
 			continue
@@ -1043,15 +1047,15 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 			// broadcast commit
 			go broadcast[*CommitRequest[T], *CommitResponse](rpcList, &CommitRequest[T]{
 				LogId: logId,
-				Value: maxValue,
+				Value: highestValue,
 			})
 			// local commit
 			a.HandleRPC(&CommitRequest[T]{
 				LogId: logId,
-				Value: maxValue,
+				Value: highestValue,
 			})
 		}()
-		return maxValue, true
+		return highestValue, true
 	}
 }
 

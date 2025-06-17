@@ -11,8 +11,8 @@ type PrepareRequest struct {
 }
 
 type PrepareResponse[T any] struct {
-	Proposal ProposalNumber `json:"proposal"`
-	Value    *T             `json:"value"`
+	Promise Promise[T] `json:"promise"`
+	Ok      bool       `json:"ok"`
 }
 
 type AcceptRequest[T any] struct {
@@ -21,8 +21,9 @@ type AcceptRequest[T any] struct {
 	Value    T              `json:"value"`
 }
 
-type AcceptResponse struct {
-	Proposal ProposalNumber `json:"proposal"`
+type AcceptResponse[T any] struct {
+	Promise Promise[T] `json:"promise"`
+	Ok      bool       `json:"ok"`
 }
 
 type CommitRequest[T any] struct {
