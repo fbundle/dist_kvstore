@@ -1,6 +1,9 @@
 package paxos
 
-import "time"
+import (
+	"math/rand"
+	"time"
+)
 
 type NodeId uint64
 
@@ -74,7 +77,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 	// exponential backoff
 	backoff := func() {
 		a = Update(a, rpcList)
-		time.Sleep(wait)
+		time.Sleep(time.Duration(rand.Intn(int(wait))))
 		wait *= 2
 		if wait > BACKOFF_MAX_TIME {
 			wait = BACKOFF_MAX_TIME

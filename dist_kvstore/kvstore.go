@@ -2,6 +2,7 @@ package dist_kvstore
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -174,7 +175,7 @@ func (ds *store) Set(cmd Cmd) {
 	defer ds.writeMu.Unlock()
 	wait := BACKOFF_MIN_TIME
 	backoff := func() {
-		time.Sleep(wait)
+		time.Sleep(time.Duration(rand.Intn(int(wait))))
 		wait *= 2
 		if wait > BACKOFF_MAX_TIME {
 			wait = BACKOFF_MAX_TIME
