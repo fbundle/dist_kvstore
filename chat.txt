@@ -1133,7 +1133,8 @@ func (a *acceptor[T]) Subscribe(sm StateMachine[T]) (cancel func()) {
 	a.subsciber = sm
 
 	for logId := a.snapshot; logId < a.smallestUnapplied; logId++ {
-		a.subsciber(logId, a.acceptor.get(logId).Value)
+		promise := a.acceptor.get(logId)
+		a.subsciber(logId, promise.Value)
 	}
 	return func() {
 		a.mu.Lock()
