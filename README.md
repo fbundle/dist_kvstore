@@ -36,3 +36,5 @@ curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "", "ver": <ver>}'
 
 - implement TLS for RPC and HTTP
 
+- implement leader election (so that can skip PREPARE phase)
+
