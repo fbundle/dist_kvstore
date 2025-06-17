@@ -84,7 +84,7 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		}
 	}
 	for {
-		if a.Committed(logId) {
+		if _, committed := a.Get(logId); committed {
 			return false
 		}
 		// prepare
