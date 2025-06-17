@@ -57,15 +57,13 @@ func HttpHandle(ds Store) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			cmd := Cmd{
-				Entries: []Entry{
-					{
-						Key: key,
-						Val: v.Val,
-						Ver: v.Ver,
-					},
+			cmd := makeCmd([]Entry{
+				{
+					Key: key,
+					Val: v.Val,
+					Ver: v.Ver,
 				},
-			}
+			})
 
 			ds.Set(cmd)
 			w.WriteHeader(http.StatusOK)

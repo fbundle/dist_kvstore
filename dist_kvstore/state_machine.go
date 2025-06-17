@@ -1,6 +1,7 @@
 package dist_kvstore
 
 import (
+	"github.com/google/uuid"
 	"github.com/khanh101/paxos/kvstore"
 	"github.com/khanh101/paxos/paxos"
 )
@@ -12,22 +13,19 @@ type Entry struct {
 }
 
 type Cmd struct {
-	Entries []Entry `json:"entries"`
+	Uuid    uuid.UUID `json:"uuid"`
+	Entries []Entry   `json:"entries"`
 }
-// Equal - TODO better to add a uuid to Cmd
+
+func makeCmd(entries []Entry) Cmd {
+	return Cmd{
+		Uuid:    uuid.New(),
+		Entries: entries,
+	}
+}
+
 func (cmd Cmd) Equal(other Cmd) bool {
-	if len(cmd.Entries) != len(other.Entries) {
-		return false
-	}
-	for i := range cmd.Entries {
-		if cmd.Entries[i].Key != other.Entries[i].Key {
-			return false
-		}
-		if cmd.Entries[i].Val != other.Entries[i].Val {
-			return false
-		}
-	}
-	return true
+	return cmd.Uuid == other.Uuid
 }
 
 type stateMachine struct {

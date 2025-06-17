@@ -2,8 +2,10 @@ module github.com/khanh101/paxos
 
 go 1.24
 
-require github.com/dgraph-io/badger/v4 v4.7.0
-
+require (
+	github.com/dgraph-io/badger/v4 v4.7.0
+	github.com/google/uuid v1.6.0
+)
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
