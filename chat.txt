@@ -1423,6 +1423,7 @@ func LogCompact[T any](rpcList []RPC) {
 	//    compact log entries [0, 1, 2, 3, ...] -> [x, 2, 3, ...]
 	//    where x stores CompressedCommand
 	// 4. StateMachine applies CompressedCommand is recovering from snapshot
+	// 5. initLogId is used to restore the StateMachine
 }
 ./main.go
 package main
