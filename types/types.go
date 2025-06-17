@@ -1,28 +1,49 @@
 package types
 
-type Sum[L any, R any] struct {
-	Value any
+type Option[T any] struct {
+	isFull bool
+	val    T
 }
 
-func (s Sum[L, R]) Get() any {
-	return s.Value
+func Some[T any](val T) Option[T] {
+	return Option[T]{
+		isFull: true,
+		val:    val,
+	}
+}
+
+func None[T any]() Option[T] {
+	return Option[T]{
+		isFull: false,
+	}
+}
+
+type Sum[L any, R any] struct {
+	val any
+}
+
+func ApplySum[T any, L any, R any](sum Sum[L, R], leftFunc func(L) T, rightFunc func(R) T) T {
+	switch val := sum.val.(type) {
+	case L:
+		return leftFunc(val)
+	case R:
+		return rightFunc(val)
+	default:
+		panic("wrong type")
+	}
 }
 
 func MakeSumLeft[L any, R any](left L) Sum[L, R] {
-	return Sum[L, R]{Value: left}
+	return Sum[L, R]{val: left}
 }
 
 func MakeSumRight[L any, R any](right R) Sum[L, R] {
-	return Sum[L, R]{Value: right}
+	return Sum[L, R]{val: right}
 }
 
 type Prod[L any, R any] struct {
 	Left  L
 	Right R
-}
-
-func (p Prod[L, R]) Get() (L, R) {
-	return p.Left, p.Right
 }
 
 func MakeProd[L any, R any](left L, right R) Prod[L, R] {
