@@ -9,8 +9,8 @@ type NodeId uint64
 
 const (
 	PROPOSAL_STEP    ProposalNumber = 4294967296
-	BACKOFF_MIN_TIME                = 10 * time.Millisecond
-	BACKOFF_MAX_TIME                = 1000 * time.Millisecond
+	BACKOFF_MIN_TIME time.Duration  = 10 * time.Millisecond
+	BACKOFF_MAX_TIME time.Duration  = 1000 * time.Millisecond
 )
 
 func decompose(proposal ProposalNumber) (uint64, NodeId) {
