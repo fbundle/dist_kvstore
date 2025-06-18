@@ -1134,11 +1134,11 @@ func Write[T any](a Acceptor[T], id ProposerId, logId LogId, value T, rpcList []
 			for _, res := range resList {
 				if res.Ok {
 					okCount++
-				}
-				if res.Promise.Value != nil {
-					if maxPromise <= res.Promise.Proposal {
-						maxPromise = res.Promise.Proposal
-						maxValuePtr = res.Promise.Value
+					if res.Promise.Value != nil {
+						if maxPromise <= res.Promise.Proposal {
+							maxPromise = res.Promise.Proposal
+							maxValuePtr = res.Promise.Value
+						}
 					}
 				}
 			}
