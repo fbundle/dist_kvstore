@@ -8,7 +8,7 @@ import (
 
 const (
 	PROPOSAL_STEP = 256
-	DROP_CHANCE   = 0.95
+	DROP_CHANCE   = 0.99
 )
 
 type Proposal uint64
@@ -32,16 +32,16 @@ func (a *Acceptor) Prepare(proposal Proposal) (Proposal, *Value, bool) {
 	return promise, acceptedValue, true
 }
 
-func (a *Acceptor) Accept(proposal Proposal, value Value) (Proposal, bool) {
+func (a *Acceptor) Accept(proposal Proposal, value Value) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	promise := a.Promise
 	if !(promise <= proposal) {
-		return promise, false
+		return false
 	}
 	a.Promise = proposal
 	a.Value = &value
-	return promise, true
+	return true
 }
 
 type ProposerId uint64
@@ -61,7 +61,7 @@ func Propose(id ProposerId, acceptorList []*Acceptor, value Value) Value {
 	for {
 		proposal := compose(round, id)
 		// prepare phase
-		maxPromise, maxValuePtr, ok := func() (Proposal, *Value, bool) {
+		maxValuePtr, ok := func() (*Value, bool) {
 			maxPromise := Proposal(0)
 			maxValuePtr := (*Value)(nil)
 			okCount := 0
@@ -76,16 +76,17 @@ func Propose(id ProposerId, acceptorList []*Acceptor, value Value) Value {
 				if ok {
 					okCount++
 				}
-				if maxPromise <= promise {
-					maxPromise = promise
-					maxValuePtr = valuePtr
+				if valuePtr != nil {
+					if maxPromise <= promise {
+						maxPromise = promise
+						maxValuePtr = valuePtr
+					}
 				}
 			}
-			return maxPromise, maxValuePtr, okCount >= quorum
+			return maxValuePtr, okCount >= quorum
 		}()
 		if !ok {
 			// backoff
-			round, _ = decompose(maxPromise)
 			round++
 			continue
 		}
@@ -93,23 +94,18 @@ func Propose(id ProposerId, acceptorList []*Acceptor, value Value) Value {
 		if maxValuePtr == nil {
 			maxValuePtr = &value
 		}
-		maxPromise, ok = func() (Proposal, bool) {
-			maxPromise := Proposal(0)
+		ok = func() bool {
 			okCount := 0
 			for _, a := range acceptorList {
-				promise, ok := a.Accept(proposal, *maxValuePtr)
+				ok := a.Accept(proposal, *maxValuePtr)
 				if ok {
 					okCount++
 				}
-				if maxPromise <= promise {
-					maxPromise = promise
-				}
 			}
-			return maxPromise, okCount >= quorum
+			return okCount >= quorum
 		}()
 		if !ok {
 			// backoff
-			round, _ = decompose(maxPromise)
 			round++
 			continue
 		}
