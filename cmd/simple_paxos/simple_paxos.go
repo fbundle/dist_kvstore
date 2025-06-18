@@ -8,7 +8,7 @@ import (
 
 const (
 	PROPOSAL_STEP = 256
-	DROP_CHANCE   = 0.9
+	DROP_CHANCE   = 0.95
 )
 
 type Proposal uint64
@@ -128,7 +128,11 @@ func main() {
 
 	acceptorList := make([]*Acceptor, 0)
 	for i := 0; i < n; i++ {
-		acceptorList = append(acceptorList, &Acceptor{})
+		acceptorList = append(acceptorList, &Acceptor{
+			mu:      sync.Mutex{},
+			Promise: 0,
+			Value:   nil,
+		})
 	}
 	ch := make(chan Output, m)
 	for j := 0; j < m; j++ {
