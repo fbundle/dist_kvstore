@@ -86,7 +86,6 @@ func Propose(id ProposerId, acceptorList []*Acceptor, value Value) Value {
 			return maxValuePtr, okCount >= quorum
 		}()
 		if !ok {
-			// backoff
 			round++
 			continue
 		}

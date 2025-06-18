@@ -69,7 +69,7 @@ func testLocal() {
 					// 3. try to write the value to logId
 					// 4. if failed, go back to 1
 					logId := acceptorList[i].Next()
-					val, ok := paxos.Write(acceptorList[i], paxos.NodeId(i), logId, v, rpcList)
+					val, ok := paxos.Write(acceptorList[i], paxos.ProposerId(i), logId, v, rpcList)
 					if val == v && ok {
 						break
 					}

@@ -5,23 +5,22 @@ import (
 	"time"
 )
 
-type NodeId uint64
+type ProposerId uint64
 
 const (
-	PROPOSAL_STEP    ProposalNumber = 4294967296
-	BACKOFF_MIN_TIME time.Duration  = 10 * time.Millisecond
-	BACKOFF_MAX_TIME time.Duration  = 1000 * time.Millisecond
+	PROPOSAL_STEP                  = 4294967296
+	BACKOFF_MIN_TIME time.Duration = 10 * time.Millisecond
+	BACKOFF_MAX_TIME time.Duration = 1000 * time.Millisecond
 )
 
-func decompose(proposal ProposalNumber) (uint64, NodeId) {
-	return uint64(proposal / PROPOSAL_STEP), NodeId(proposal % PROPOSAL_STEP)
-}
-func compose(round uint64, nodeId NodeId) ProposalNumber {
-	return PROPOSAL_STEP*ProposalNumber(round) + ProposalNumber(nodeId)
+type Round uint64
+
+func compose(round Round, id ProposerId) Proposal {
+	return Proposal(uint64(round)*PROPOSAL_STEP + uint64(id))
 }
 
-func quorum(n int) int {
-	return n/2 + 1
+func decompose(proposal Proposal) (Round, ProposerId) {
+	return Round(proposal / PROPOSAL_STEP), ProposerId(proposal % PROPOSAL_STEP)
 }
 
 type RPC func(Request, chan<- Response)
@@ -70,12 +69,14 @@ func Update[T any](a Acceptor[T], rpcList []RPC) Acceptor[T] {
 }
 
 // Write - write new value
-func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC) (T, bool) {
-	n := len(rpcList)
-	proposal := compose(0, id)
+func Write[T any](a Acceptor[T], id ProposerId, logId LogId, value T, rpcList []RPC) (T, bool) {
+	quorum := len(rpcList)/2 + 1
+	round := Round(1)
+
 	wait := BACKOFF_MIN_TIME
 	// exponential backoff
 	backoff := func() {
+		round++
 		a = Update(a, rpcList)
 		time.Sleep(time.Duration(rand.Intn(int(wait))))
 		wait *= 2
@@ -87,66 +88,54 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 		if _, committed := a.GetValue(logId); committed {
 			return zero[T](), false
 		}
-		var highestValue T                 // non-nil value assigned with the highest proposal number
-		var highestProposal ProposalNumber // highest promised proposal number on all acceptors - used to choose the next proposal number
-		var okCount int                    // number of acceptors promised to this request
 		// prepare
-		highestValue, highestProposal, okCount = func() (T, ProposalNumber, int) {
+		proposal := compose(round, id)
+		maxValuePtr, ok := func() (*T, bool) {
+			maxPromise := Proposal(0)
+			maxValuePtr := (*T)(nil)
+			okCount := 0
 			resList := broadcast[*PrepareRequest, *PrepareResponse[T]](rpcList, &PrepareRequest{
 				LogId:    logId,
 				Proposal: proposal,
 			})
-
-			maxValuePtr := (*T)(nil)
-			maxProposal := ProposalNumber(0)
-			okCount := 0
 			for _, res := range resList {
 				if res.Ok {
 					okCount++
 				}
-				if maxProposal <= res.Promise.Proposal {
-					// propagate the value with the highest proposal number
-					// this is actually not important for consensus
-					// but to prevent proposers sending too many different values
-					// this is a mechanism to promote convergence
-					maxProposal = res.Promise.Proposal
-					maxValuePtr = res.Promise.Value
+				if res.Promise.Value != nil {
+					if maxPromise <= res.Promise.Proposal {
+						maxPromise = res.Promise.Proposal
+						maxValuePtr = res.Promise.Value
+					}
 				}
 			}
-			if maxValuePtr == nil {
-				maxValuePtr = &value
-			}
-			return *maxValuePtr, maxProposal, okCount
+			return maxValuePtr, okCount >= quorum
 		}()
 
-		if okCount < quorum(n) {
-			maxRound, _ := decompose(highestProposal)
-			proposal = compose(maxRound+1, id)
+		if !ok {
 			backoff()
 			continue
 		}
 		// accept
-		highestProposal, okCount = func() (ProposalNumber, int) {
+		if maxValuePtr == nil {
+			maxValuePtr = &value
+		}
+
+		ok = func() bool {
 			resList := broadcast[*AcceptRequest[T], *AcceptResponse[T]](rpcList, &AcceptRequest[T]{
 				LogId:    logId,
 				Proposal: proposal,
-				Value:    highestValue,
+				Value:    *maxValuePtr,
 			})
-			maxProposal := ProposalNumber(0)
 			okCount := 0
 			for _, res := range resList {
 				if res.Ok {
 					okCount++
 				}
-				if maxProposal < res.Promise.Proposal {
-					maxProposal = res.Promise.Proposal
-				}
 			}
-			return maxProposal, okCount
+			return okCount >= quorum
 		}()
-		if okCount < quorum(n) {
-			maxRound, _ := decompose(highestProposal)
-			proposal = compose(maxRound+1, id)
+		if !ok {
 			backoff()
 			continue
 		}
@@ -155,15 +144,15 @@ func Write[T any](a Acceptor[T], id NodeId, logId LogId, value T, rpcList []RPC)
 			// broadcast commit
 			go broadcast[*CommitRequest[T], *CommitResponse](rpcList, &CommitRequest[T]{
 				LogId: logId,
-				Value: highestValue,
+				Value: *maxValuePtr,
 			})
 			// local commit
 			a.HandleRPC(&CommitRequest[T]{
 				LogId: logId,
-				Value: highestValue,
+				Value: *maxValuePtr,
 			})
 		}()
-		return highestValue, true
+		return *maxValuePtr, true
 	}
 }
 

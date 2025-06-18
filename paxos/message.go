@@ -6,8 +6,8 @@ type Request interface {
 type Response interface {
 }
 type PrepareRequest struct {
-	LogId    LogId          `json:"log_id"`
-	Proposal ProposalNumber `json:"proposal"`
+	LogId    LogId    `json:"log_id"`
+	Proposal Proposal `json:"proposal"`
 }
 
 type PrepareResponse[T any] struct {
@@ -16,9 +16,9 @@ type PrepareResponse[T any] struct {
 }
 
 type AcceptRequest[T any] struct {
-	LogId    LogId          `json:"log_id"`
-	Proposal ProposalNumber `json:"proposal"`
-	Value    T              `json:"value"`
+	LogId    LogId    `json:"log_id"`
+	Proposal Proposal `json:"proposal"`
+	Value    T        `json:"value"`
 }
 
 type AcceptResponse[T any] struct {
@@ -39,6 +39,6 @@ type PollRequest struct {
 }
 
 type PollResponse[T any] struct {
-	Proposal ProposalNumber `json:"proposal"`
-	Value    *T             `json:"value"`
+	Proposal Proposal `json:"proposal"`
+	Value    *T       `json:"value"`
 }

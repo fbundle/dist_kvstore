@@ -37,7 +37,7 @@ func makeHandlerFunc[Req any, Res any](acceptor paxos.Acceptor[Cmd]) func(*Req) 
 }
 
 type store struct {
-	id           paxos.NodeId
+	id           paxos.ProposerId
 	peerAddrList []string
 	db           *badger.DB
 	memStore     *stateMachine
@@ -115,7 +115,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 
 	updateCtx, updateCancel := context.WithCancel(context.Background())
 	return &store{
-		id:           paxos.NodeId(id),
+		id:           paxos.ProposerId(id),
 		peerAddrList: peerAddrList,
 		db:           db,
 		memStore:     memStore,
