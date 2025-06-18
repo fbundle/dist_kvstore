@@ -98,5 +98,4 @@ func Propose(id ProposerId, acceptorList []*Acceptor, value Value) Value {
 		// consensus has been reached at value (*maxValuePtr)
 		return *maxValuePtr
 	}
-
 }
