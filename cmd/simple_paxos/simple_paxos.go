@@ -75,11 +75,11 @@ func Propose(id ProposerId, acceptorList []*Acceptor, value Value) Value {
 				}
 				if ok {
 					okCount++
-				}
-				if valuePtr != nil {
-					if maxPromise <= promise {
-						maxPromise = promise
-						maxValuePtr = valuePtr
+					if valuePtr != nil {
+						if maxPromise <= promise {
+							maxPromise = promise
+							maxValuePtr = valuePtr
+						}
 					}
 				}
 			}
