@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-
-APPNAME=$1
-HOSTLIST=$2
-PRIVATEKEY=$3
-
-# generate config
-# python $APPNAME/generate_config.py $APPNAME $HOSTLIST $PRIVATEKEY
-
-python bin/make_script.py $APPNAME $HOSTLIST $PRIVATEKEY
+addr_list_str=$1
+aes_key=$2
+python cmd/util/make_script.py $addr_list_str $aes_key || exit 1;
+bash tmp/run_all.sh  || exit 1;
