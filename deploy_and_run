@@ -11,7 +11,7 @@ TARGET="/home/khanh/deploy"
 
 # copy
 ssh $HOST "mkdir -p \"$TARGET/$APPNAME/\""
-rsync -avh --progress --delete "golang/$GOCOMPILER" $HOST:"$TARGET/$APPNAME/"
+rsync -avh --progress --delete "go_compiler/$GOCOMPILER" $HOST:"$TARGET/$APPNAME/"
 rsync -avh --progress --delete $APPSRC $HOST:"$TARGET/$APPNAME/"
 
 # exec
