@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 
+	"github.com/khanh101/paxos/pkg/crypt"
 	"github.com/khanh101/paxos/pkg/rpc"
 )
 
@@ -131,6 +133,25 @@ func testRPCTCP() {
 	}
 }
 
+func testAES() {
+	key := crypt.NewKey([]byte("example key 1234")) // 16 bytes for AES-128, 24 for AES-192, 32 for AES-256
+	plaintext := []byte("Hello, AES encryption in Go!")
+
+	// Encrypt
+	ciphertext, err := key.Encrypt(plaintext)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Encrypted (hex): %s\n", hex.EncodeToString(ciphertext))
+
+	// Decrypt
+	decrypted, err := key.Decrypt(ciphertext)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Decrypted: %s\n", decrypted)
+}
+
 func main() {
-	testLocal()
+	testAES()
 }

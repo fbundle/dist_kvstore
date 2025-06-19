@@ -64,8 +64,10 @@ func main() {
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 
+	"github.com/khanh101/paxos/pkg/crypt"
 	"github.com/khanh101/paxos/pkg/rpc"
 )
 
@@ -194,8 +196,27 @@ func testRPCTCP() {
 	}
 }
 
+func testAES() {
+	key := crypt.NewKey([]byte("example key 1234")) // 16 bytes for AES-128, 24 for AES-192, 32 for AES-256
+	plaintext := []byte("Hello, AES encryption in Go!")
+
+	// Encrypt
+	ciphertext, err := key.Encrypt(plaintext)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Encrypted (hex): %s\n", hex.EncodeToString(ciphertext))
+
+	// Decrypt
+	decrypted, err := key.Decrypt(ciphertext)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Decrypted: %s\n", decrypted)
+}
+
 func main() {
-	testLocal()
+	testAES()
 }
 ./cmd/simple_paxos/simple_paxos.go
 package main
@@ -613,12 +634,16 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"time"
+
+	"github.com/khanh101/paxos/pkg/crypt"
 )
 
 const (
 	TCP_TIMEOUT = 10 * time.Second
+	AES_KEY     = "AES_KEY"
 )
 
 type TCPServer interface {
@@ -628,8 +653,20 @@ type TCPServer interface {
 	Close() error
 }
 
+func getKey() crypt.Key {
+	keyStr := os.Getenv(AES_KEY)
+	if len(keyStr) == 0 {
+		panic("no key found")
+	}
+	key := crypt.NewKey(keyStr)
+	return key
+}
+
 func TCPTransport(addr string) TransportFunc {
+	key := getKey()
+
 	return func(input []byte) (output []byte, err error) {
+
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
 			return nil, err
@@ -641,9 +678,24 @@ func TCPTransport(addr string) TransportFunc {
 			return
 		}
 
+		// encrypt before send
+		input, err = key.Encrypt(input)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
 		conn.Write(input)
 		conn.Write([]byte("\n")) // '\n' notifies end of input
 		output, err = io.ReadAll(conn)
+
+		// decrypt after receive
+		output, err = key.Decrypt(output)
+		if err != nil {
+			fmt.Println(err)
+			return nil, err
+		}
+
 		return output, err
 	}
 }
@@ -652,6 +704,7 @@ type tcpServer struct {
 	mu         sync.Mutex
 	dispatcher Dispatcher
 	listener   net.Listener
+	key        crypt.Key
 }
 
 func NewTCPServer(bindAddr string) (TCPServer, error) {
@@ -663,6 +716,7 @@ func NewTCPServer(bindAddr string) (TCPServer, error) {
 		mu:         sync.Mutex{},
 		dispatcher: NewDispatcher(),
 		listener:   listener,
+		key:        getKey(),
 	}, nil
 }
 
@@ -693,6 +747,14 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 		return
 	}
 	b := []byte(msg)
+
+	// decrypt after receive
+	b, err = s.key.Decrypt(b)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	{
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -702,6 +764,14 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 		fmt.Println(err)
 		return
 	}
+
+	// encrypt before send
+	b, err = s.key.Encrypt(b)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	_, err = conn.Write(b)
 	if err != nil {
 		return
@@ -1491,6 +1561,76 @@ func LogCompact[T any](rpcList []RPC) {
 	 */
 	// compressLog[T any](ts ...T) T // type signature for log compression where T is type of value
 }
+./pkg/crypt/crypt.go
+package crypt
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"fmt"
+	"io"
+)
+
+func NewKey(s string) Key {
+	hash := sha256.Sum256([]byte(s))
+	return key(hash[:])
+}
+
+type Key interface {
+	Encrypt(plaintext []byte) (ciphertext []byte, err error)
+	Decrypt(ciphertext []byte) (plaintext []byte, err error)
+}
+
+type key []byte
+
+func (k key) Encrypt(plaintext []byte) (ciphertext []byte, err error) {
+	block, err := aes.NewCipher(k)
+	if err != nil {
+		return nil, err
+	}
+
+	// GCM mode provides authenticated encryption
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, aesGCM.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	// Seal appends the encrypted data to the nonce
+	ciphertext = aesGCM.Seal(nonce, nonce, plaintext, nil)
+	return ciphertext, nil
+}
+
+func (k key) Decrypt(ciphertext []byte) (plaintext []byte, err error) {
+	block, err := aes.NewCipher(k)
+	if err != nil {
+		return nil, err
+	}
+
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := aesGCM.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err = aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return plaintext, nil
+}
 ./main.go
 package main
 
@@ -1556,6 +1696,7 @@ func main() {
 ./cmd/util/make_script.py
 from typing import Iterator
 import sys
+import shutil
 import os
 import json
 
@@ -1564,10 +1705,14 @@ CONFIG_PATH = f"{TMP_DIR}/config.json"
 RUN_PATH = f"{TMP_DIR}/run_all.sh"
 GO_PATH = "/home/khanh/ws/miniforge3/envs/test/go/bin/go"
 TMUX_SESSION = "kvstore"
+AES_KEY = "AES_KEY"
 
 if __name__ == "__main__":
-    addr_list_str = "192.168.1.100,192.168.1.101,192.168.1.102"
-    addr_list_str = sys.argv[1]
+    # aes_key = "this is an aes key"
+    # addr_list_str = "192.168.1.100,192.168.1.101,192.168.1.102"
+    aes_key = sys.argv[1]
+    addr_list_str = sys.argv[2]
+
     addr_list = addr_list_str.split(",")
     cwd = os.getcwd()
 
@@ -1593,13 +1738,15 @@ if __name__ == "__main__":
             node_command = ""
             node_command += f"tmux has-session -t {TMUX_SESSION} 2>/dev/null && tmux kill-session -t {TMUX_SESSION}"
             node_command += "; "
-            node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {cwd}; {GO_PATH} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
+            node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {cwd}; {AES_KEY}=\"{aes_key}\" {GO_PATH} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
             command = f"ssh {addr} \'bash -lc \"{node_command}\"\'"
             yield command
 
 
-    if not os.path.exists(TMP_DIR):
-        os.makedirs(TMP_DIR)
+    if os.path.exists(TMP_DIR):
+        shutil.rmtree(TMP_DIR)
+    
+    os.makedirs(TMP_DIR)
     # write config
     with open(CONFIG_PATH, "w") as f:
         f.write(json.dumps(list(make_config_list()), indent=4))

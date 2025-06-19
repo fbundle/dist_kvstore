@@ -1,5 +1,6 @@
 from typing import Iterator
 import sys
+import shutil
 import os
 import json
 
@@ -8,10 +9,14 @@ CONFIG_PATH = f"{TMP_DIR}/config.json"
 RUN_PATH = f"{TMP_DIR}/run_all.sh"
 GO_PATH = "/home/khanh/ws/miniforge3/envs/test/go/bin/go"
 TMUX_SESSION = "kvstore"
+AES_KEY = "AES_KEY"
 
 if __name__ == "__main__":
-    addr_list_str = "192.168.1.100,192.168.1.101,192.168.1.102"
-    addr_list_str = sys.argv[1]
+    # aes_key = "this is an aes key"
+    # addr_list_str = "192.168.1.100,192.168.1.101,192.168.1.102"
+    aes_key = sys.argv[1]
+    addr_list_str = sys.argv[2]
+
     addr_list = addr_list_str.split(",")
     cwd = os.getcwd()
 
@@ -37,13 +42,15 @@ if __name__ == "__main__":
             node_command = ""
             node_command += f"tmux has-session -t {TMUX_SESSION} 2>/dev/null && tmux kill-session -t {TMUX_SESSION}"
             node_command += "; "
-            node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {cwd}; {GO_PATH} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
+            node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {cwd}; {AES_KEY}=\"{aes_key}\" {GO_PATH} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
             command = f"ssh {addr} \'bash -lc \"{node_command}\"\'"
             yield command
 
 
-    if not os.path.exists(TMP_DIR):
-        os.makedirs(TMP_DIR)
+    if os.path.exists(TMP_DIR):
+        shutil.rmtree(TMP_DIR)
+    
+    os.makedirs(TMP_DIR)
     # write config
     with open(CONFIG_PATH, "w") as f:
         f.write(json.dumps(list(make_config_list()), indent=4))
