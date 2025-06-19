@@ -7,8 +7,4 @@ PRIVATEKEY=$3
 # generate config
 # python $APPNAME/generate_config.py $APPNAME $HOSTLIST $PRIVATEKEY
 
-# run in each node
-IFS=',' read -ra HOSTLIST_ARR <<< $HOSTLIST
-for item in ${HOSTLIST_ARR[@]}; do
-  echo $item
-done
+python bin/make_script.py $APPNAME $HOSTLIST $PRIVATEKEY
