@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/khanh101/paxos/dist_kvstore"
+	"github.com/khanh101/paxos/pkg/dist_kvstore"
 )
 
 type Config struct {

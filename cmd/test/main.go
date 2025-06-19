@@ -6,9 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/paxos"
-	"github.com/khanh101/paxos/rpc"
+	"github.com/khanh101/paxos/pkg/kvstore"
+	"github.com/khanh101/paxos/pkg/paxos"
+	"github.com/khanh101/paxos/pkg/rpc"
 )
 
 func testLocal() {

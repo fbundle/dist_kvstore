@@ -69,9 +69,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/paxos"
-	"github.com/khanh101/paxos/rpc"
+	"github.com/khanh101/paxos/pkg/kvstore"
+	"github.com/khanh101/paxos/pkg/paxos"
+	"github.com/khanh101/paxos/pkg/rpc"
 )
 
 func testLocal() {
@@ -430,7 +430,7 @@ func main() {
 		fmt.Printf("proposer %d agrees at value %v\n", o.Id, o.Val)
 	}
 }
-./kvstore/store.go
+./pkg/kvstore/store.go
 package kvstore
 
 type Txn[K comparable, V any] interface {
@@ -448,7 +448,7 @@ type MemStore[K comparable, V any] interface {
 	Store[K, V]
 	Keys() []K
 }
-./kvstore/barger_store.go
+./pkg/kvstore/barger_store.go
 package kvstore
 
 import (
@@ -538,7 +538,7 @@ func (b *badgerStore[K, V]) Close() {
 		panic(err)
 	}
 }
-./kvstore/mem_store.go
+./pkg/kvstore/mem_store.go
 package kvstore
 
 import "sync"
@@ -581,53 +581,7 @@ func (m *memStore[K, V]) Set(k K, v V) {
 func (m *memStore[K, V]) Del(k K) {
 	delete(m.store, k)
 }
-./subscriber/pool.go
-package subscriber
-
-import (
-	"sync"
-)
-
-type SubscriberPool[T any] interface {
-	Subscribe(T) func()
-	Iterate(func(T))
-}
-
-func NewPool[T any]() SubscriberPool[T] {
-	return &subscriberPool[T]{
-		mu:    sync.RWMutex{},
-		count: 0,
-		pool:  make(map[uint]T),
-	}
-}
-
-type subscriberPool[T any] struct {
-	mu    sync.RWMutex
-	count uint
-	pool  map[uint]T
-}
-
-func (p *subscriberPool[T]) Subscribe(t T) func() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	count := p.count
-	p.count++
-	p.pool[count] = t
-	return func() {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		delete(p.pool, count)
-	}
-}
-
-func (p *subscriberPool[T]) Iterate(f func(t T)) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	for _, t := range p.pool {
-		f(t)
-	}
-}
-./rpc/dispatcher.go
+./pkg/rpc/dispatcher.go
 package rpc
 
 import (
@@ -702,7 +656,7 @@ func (d *dispatcher) Handle(input []byte) (output []byte, err error) {
 	}
 	return output, nil
 }
-./rpc/rpc.go
+./pkg/rpc/rpc.go
 package rpc
 
 import (
@@ -740,7 +694,7 @@ func RPC[Req any, Res any](transport TransportFunc, name string, req *Req) (res 
 	}
 	return res, nil
 }
-./rpc/tcp_server.go
+./pkg/rpc/tcp_server.go
 package rpc
 
 import (
@@ -852,7 +806,7 @@ func (s *tcpServer) ListenAndServe() error {
 		go s.handleConn(conn)
 	}
 }
-./dist_kvstore/util.go
+./pkg/dist_kvstore/util.go
 package dist_kvstore
 
 import "fmt"
@@ -871,13 +825,13 @@ func combineErrors(errs ...error) error {
 	}
 	return fmt.Errorf("%v", errorList)
 }
-./dist_kvstore/state_machine.go
+./pkg/dist_kvstore/state_machine.go
 package dist_kvstore
 
 import (
 	"github.com/google/uuid"
-	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/paxos"
+	"github.com/khanh101/paxos/pkg/kvstore"
+	"github.com/khanh101/paxos/pkg/paxos"
 )
 
 type Entry struct {
@@ -940,7 +894,7 @@ func (sm *stateMachine) Apply(logId paxos.LogId, cmd Cmd) {
 		return nil
 	})
 }
-./dist_kvstore/http.go
+./pkg/dist_kvstore/http.go
 package dist_kvstore
 
 import (
@@ -1016,7 +970,7 @@ func HttpHandle(ds Store) http.HandlerFunc {
 
 	}
 }
-./dist_kvstore/kvstore.go
+./pkg/dist_kvstore/kvstore.go
 package dist_kvstore
 
 import (
@@ -1026,9 +980,9 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/paxos"
-	"github.com/khanh101/paxos/rpc"
+	"github.com/khanh101/paxos/pkg/kvstore"
+	"github.com/khanh101/paxos/pkg/paxos"
+	"github.com/khanh101/paxos/pkg/rpc"
 )
 
 const (
@@ -1199,7 +1153,7 @@ func (ds *store) Get(key string) Entry {
 func (ds *store) Keys() []string {
 	return ds.memStore.Keys()
 }
-./paxos/message.go
+./pkg/paxos/message.go
 package paxos
 
 type Request interface {
@@ -1244,13 +1198,13 @@ type PollResponse[T any] struct {
 	Proposal Proposal `json:"proposal"`
 	Value    *T       `json:"value"`
 }
-./paxos/acceptor.go
+./pkg/paxos/acceptor.go
 package paxos
 
 import (
 	"sync"
 
-	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/pkg/kvstore"
 )
 
 type StateMachine[T any] func(logId LogId, value T)
@@ -1361,11 +1315,11 @@ func (a *acceptor[T]) HandleRPC(r Request) Response {
 		return nil
 	}
 }
-./paxos/simple_acceptor.go
+./pkg/paxos/simple_acceptor.go
 package paxos
 
 import (
-	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/pkg/kvstore"
 )
 
 // Proposal - roundId * 4294967296 + nodeId
@@ -1452,7 +1406,7 @@ func (a *simpleAcceptor[T]) accept(logId LogId, proposal Proposal, value T) (Pro
 	promise, ok := r[0].(Promise[T]), r[1].(bool)
 	return promise, ok
 }
-./paxos/proposer.go
+./pkg/paxos/proposer.go
 package paxos
 
 import (
@@ -1637,7 +1591,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/khanh101/paxos/dist_kvstore"
+	"github.com/khanh101/paxos/pkg/dist_kvstore"
 )
 
 type Config struct {
@@ -1688,6 +1642,7 @@ func main() {
 	}
 	return
 }
+./cmd/util/make_config_from_bind_addr.py
 ./client.py
 from typing import Iterator, Any
 import json
