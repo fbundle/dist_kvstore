@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
+
 APPNAME=$1
 HOSTLIST=$2
 PRIVATEKEY=$3
 
-set -x
-
+# generate config
 mkdir -p tmp
 python $APPNAME/generate_config.py $APPNAME $HOSTLIST $PRIVATEKEY > tmp/config.json
+
+# run in each node
+IFS=',' read -ra HOSTLIST_ARR <<< $HOSTLIST
+for item in ${HOSTLIST_ARR[@]}; do
+  echo $item
+done
