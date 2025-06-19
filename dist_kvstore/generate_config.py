@@ -1,5 +1,7 @@
 import sys
 import json
+import os
+import shutil
 
 if __name__ == "__main__":
     app_name: str = sys.argv[1]
@@ -20,4 +22,8 @@ if __name__ == "__main__":
             "store": "localhost:4000",
         })
     
-    print(json.dumps(config, indent=2), file=sys.stdout)
+    if os.path.exists("tmp"):
+        shutil.rmtree("tmp")
+    os.makedirs("tmp")
+    with open("tmp/config.json") as f:
+        f.write(json.dumps(config, indent=2))
