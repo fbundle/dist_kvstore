@@ -3,7 +3,7 @@ import sys
 import shutil
 import os
 import json
-
+import re
 
 TMP_DIR = "tmp"
 CONFIG_PATH = f"{TMP_DIR}/config.json"
@@ -52,7 +52,7 @@ if __name__ == "__main__":
             node_command = ""
             node_command += f"tmux has-session -t {TMUX_SESSION} 2>/dev/null && tmux kill-session -t {TMUX_SESSION}"
             node_command += "; "
-            node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {code_dir}; {AES_KEY_ENV}=\"{aes_key}\" {GOBIN} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
+            node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {code_dir}; {AES_KEY_ENV}={aes_key} {GOBIN} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
             command = f"ssh {addr} \"{node_command}\""
             yield command
     
@@ -60,7 +60,7 @@ if __name__ == "__main__":
         for i, addr in enumerate(addr_list):
             node_command = ""
             node_command += f"tmux has-session -t {TMUX_SESSION} 2>/dev/null && tmux kill-session -t {TMUX_SESSION}"
-            command = f"ssh {addr} '{node_command}'"
+            command = f"ssh {addr} \"{node_command}\""
             yield command
 
 
