@@ -6,6 +6,7 @@ import json
 TMP_DIR = "tmp"
 CONFIG_PATH = f"{TMP_DIR}/config.json"
 RUN_PATH = f"{TMP_DIR}/run"
+GO_PATH = "/home/khanh/ws/miniforge3/envs/test/go/bin/go"
 TMUX_SESSION = "kvstore"
 
 if __name__ == "__main__":
@@ -35,8 +36,8 @@ if __name__ == "__main__":
             node_command = ""
             node_command += f"tmux has-session -t {TMUX_SESSION} 2>/dev/null && tmux kill-session -t {TMUX_SESSION}"
             node_command += "; "
-            node_command += f"tmux new-session -s {TMUX_SESSION} -d \"cd {cwd}; go run main.go {CONFIG_PATH} {i} |& tee run.log\""
-            command = f"ssh {addr} \'{node_command}\'"
+            node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {cwd}; {GO_PATH} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
+            command = f"ssh {addr} \'bash -lc \"{node_command}\"\'"
             yield command
 
 
