@@ -54,7 +54,7 @@ func TCPTransport(addr string) TransportFunc {
 			b_old := b
 			b, err = key.Encrypt(b_old)
 			if err != nil {
-				fmt.Println(b_old, err)
+				fmt.Println(string(b_old), err)
 				return nil, err
 			}
 		}
@@ -71,7 +71,7 @@ func TCPTransport(addr string) TransportFunc {
 			b_old := b
 			b, err = key.Decrypt(b_old)
 			if err != nil {
-				fmt.Println(b_old, err)
+				fmt.Println(string(b_old), err)
 				return nil, err
 			}
 		}
@@ -133,7 +133,7 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 		b_old := b
 		b, err = s.key.Decrypt(b_old)
 		if err != nil {
-			fmt.Println(b_old, err)
+			fmt.Println(string(b_old), err)
 			return
 		}
 	}
@@ -153,7 +153,7 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 		b_old := b
 		b, err = s.key.Encrypt(b_old)
 		if err != nil {
-			fmt.Println(b_old, err)
+			fmt.Println(string(b_old), err)
 			return
 		}
 	}
