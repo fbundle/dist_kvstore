@@ -6,20 +6,23 @@ ARCH=$3
 
 #
 APPSRC=$APPNAME
-GOCOMPILER="golang/go1.24.4.${ARCH}.tar.gz"
-TARGET="~/deploy"
+GOCOMPILER="go1.24.4.${ARCH}.tar.gz"
+TARGET="/home/khanh/deploy"
 
 # copy
-rsync -avh --progress --delete $GOCOMPILER $HOST:"$TARGET/$APPNAME/"
+ssh $HOST "mkdir -p \"$TARGET/$APPNAME/\""
+rsync -avh --progress --delete "golang/$GOCOMPILER" $HOST:"$TARGET/$APPNAME/"
 rsync -avh --progress --delete $APPSRC $HOST:"$TARGET/$APPNAME/"
 
 # exec
 ssh $HOST << EOF
     set e
+    export GOCOMPILER="$GOCOMPILER"
     cd "$TARGET/$APPNAME/"
     rm -rf go
-    tar -xf "$GOCOMPILER"
+    tar -xf "\$GOCOMPILER"
     export GOROOT="$TARGET/$APPNAME/go"
+    export PATH="\$GOROOT/bin:\$PATH"
     cd "$APPNAME"
     go build -o app
     ./app |& tee "$TARGET/$APPNAME/run.log"
