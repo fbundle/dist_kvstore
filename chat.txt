@@ -60,150 +60,6 @@ func main() {
 		}(badgerPath)
 	}
 }
-./cmd/simple_paxos/simple_paxos.go
-package main
-
-import (
-	"fmt"
-	"math/rand/v2"
-	"sync"
-)
-
-const (
-	PROPOSAL_STEP = 256
-	DROP_CHANCE   = 0.99
-)
-
-type Proposal uint64
-
-type Value string
-
-type Acceptor struct {
-	mu      sync.Mutex
-	Promise Proposal
-	Value   *Value
-}
-
-func (a *Acceptor) Prepare(proposal Proposal) (Proposal, *Value, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	promise, acceptedValue := a.Promise, a.Value
-	if !(promise < proposal) {
-		return promise, acceptedValue, false
-	}
-	a.Promise = proposal
-	return promise, acceptedValue, true
-}
-
-func (a *Acceptor) Accept(proposal Proposal, value Value) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	promise := a.Promise
-	if !(promise <= proposal) {
-		return false
-	}
-	a.Promise = proposal
-	a.Value = &value
-	return true
-}
-
-type ProposerId uint64
-type Round uint64
-
-func compose(round Round, id ProposerId) Proposal {
-	return Proposal(uint64(round)*PROPOSAL_STEP + uint64(id))
-}
-
-func decompose(proposal Proposal) (Round, ProposerId) {
-	return Round(proposal / PROPOSAL_STEP), ProposerId(proposal % PROPOSAL_STEP)
-}
-
-func Propose(id ProposerId, acceptorList []*Acceptor, value Value) Value {
-	quorum := len(acceptorList)/2 + 1
-	round := Round(1)
-	for {
-		proposal := compose(round, id)
-		// prepare phase
-		maxValuePtr, ok := func() (*Value, bool) {
-			maxPromise := Proposal(0)
-			maxValuePtr := (*Value)(nil)
-			okCount := 0
-			for _, a := range acceptorList {
-				if rand.Float64() < DROP_CHANCE {
-					continue
-				}
-				promise, valuePtr, ok := a.Prepare(proposal)
-				if rand.Float64() < DROP_CHANCE {
-					continue
-				}
-				if ok {
-					okCount++
-					if valuePtr != nil {
-						if maxPromise <= promise {
-							maxPromise = promise
-							maxValuePtr = valuePtr
-						}
-					}
-				}
-			}
-			return maxValuePtr, okCount >= quorum
-		}()
-		if !ok {
-			round++
-			continue
-		}
-		// accept phase
-		if maxValuePtr == nil {
-			maxValuePtr = &value
-		}
-		ok = func() bool {
-			okCount := 0
-			for _, a := range acceptorList {
-				ok := a.Accept(proposal, *maxValuePtr)
-				if ok {
-					okCount++
-				}
-			}
-			return okCount >= quorum
-		}()
-		if !ok {
-			// backoff
-			round++
-			continue
-		}
-		// consensus has been reached at value (*maxValuePtr)
-		return *maxValuePtr
-	}
-}
-
-type Output struct {
-	Id  ProposerId
-	Val Value
-}
-
-func main() {
-	n, m := 3, 5
-
-	acceptorList := make([]*Acceptor, 0)
-	for i := 0; i < n; i++ {
-		acceptorList = append(acceptorList, &Acceptor{
-			mu:      sync.Mutex{},
-			Promise: 0,
-			Value:   nil,
-		})
-	}
-	ch := make(chan Output, m)
-	for j := 0; j < m; j++ {
-		go func(j ProposerId) {
-			value := Propose(j, acceptorList, Value(fmt.Sprintf("hello_%d", j)))
-			ch <- Output{j, value}
-		}(ProposerId(j))
-	}
-	for j := 0; j < m; j++ {
-		o := <-ch
-		fmt.Printf("proposer %d agrees at value %v\n", o.Id, o.Val)
-	}
-}
 ./cmd/test/main.go
 package main
 
@@ -430,6 +286,736 @@ func testRPCTCP() {
 func main() {
 	testLocal()
 }
+./cmd/simple_paxos/simple_paxos.go
+package main
+
+import (
+	"fmt"
+	"math/rand/v2"
+	"sync"
+)
+
+const (
+	PROPOSAL_STEP = 256
+	DROP_CHANCE   = 0.99
+)
+
+type Proposal uint64
+
+type Value string
+
+type Acceptor struct {
+	mu      sync.Mutex
+	Promise Proposal
+	Value   *Value
+}
+
+func (a *Acceptor) Prepare(proposal Proposal) (Proposal, *Value, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	promise, acceptedValue := a.Promise, a.Value
+	if !(promise < proposal) {
+		return promise, acceptedValue, false
+	}
+	a.Promise = proposal
+	return promise, acceptedValue, true
+}
+
+func (a *Acceptor) Accept(proposal Proposal, value Value) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	promise := a.Promise
+	if !(promise <= proposal) {
+		return false
+	}
+	a.Promise = proposal
+	a.Value = &value
+	return true
+}
+
+type ProposerId uint64
+type Round uint64
+
+func compose(round Round, id ProposerId) Proposal {
+	return Proposal(uint64(round)*PROPOSAL_STEP + uint64(id))
+}
+
+func decompose(proposal Proposal) (Round, ProposerId) {
+	return Round(proposal / PROPOSAL_STEP), ProposerId(proposal % PROPOSAL_STEP)
+}
+
+func Propose(id ProposerId, acceptorList []*Acceptor, value Value) Value {
+	quorum := len(acceptorList)/2 + 1
+	round := Round(1)
+	for {
+		proposal := compose(round, id)
+		// prepare phase
+		maxValuePtr, ok := func() (*Value, bool) {
+			maxPromise := Proposal(0)
+			maxValuePtr := (*Value)(nil)
+			okCount := 0
+			for _, a := range acceptorList {
+				if rand.Float64() < DROP_CHANCE {
+					continue
+				}
+				promise, valuePtr, ok := a.Prepare(proposal)
+				if rand.Float64() < DROP_CHANCE {
+					continue
+				}
+				if ok {
+					okCount++
+					if valuePtr != nil {
+						if maxPromise <= promise {
+							maxPromise = promise
+							maxValuePtr = valuePtr
+						}
+					}
+				}
+			}
+			return maxValuePtr, okCount >= quorum
+		}()
+		if !ok {
+			round++
+			continue
+		}
+		// accept phase
+		if maxValuePtr == nil {
+			maxValuePtr = &value
+		}
+		ok = func() bool {
+			okCount := 0
+			for _, a := range acceptorList {
+				ok := a.Accept(proposal, *maxValuePtr)
+				if ok {
+					okCount++
+				}
+			}
+			return okCount >= quorum
+		}()
+		if !ok {
+			// backoff
+			round++
+			continue
+		}
+		// consensus has been reached at value (*maxValuePtr)
+		return *maxValuePtr
+	}
+}
+
+type Output struct {
+	Id  ProposerId
+	Val Value
+}
+
+func main() {
+	n, m := 3, 5
+
+	acceptorList := make([]*Acceptor, 0)
+	for i := 0; i < n; i++ {
+		acceptorList = append(acceptorList, &Acceptor{
+			mu:      sync.Mutex{},
+			Promise: 0,
+			Value:   nil,
+		})
+	}
+	ch := make(chan Output, m)
+	for j := 0; j < m; j++ {
+		go func(j ProposerId) {
+			value := Propose(j, acceptorList, Value(fmt.Sprintf("hello_%d", j)))
+			ch <- Output{j, value}
+		}(ProposerId(j))
+	}
+	for j := 0; j < m; j++ {
+		o := <-ch
+		fmt.Printf("proposer %d agrees at value %v\n", o.Id, o.Val)
+	}
+}
+./kvstore/store.go
+package kvstore
+
+type Txn[K comparable, V any] interface {
+	Get(k K) (v V, ok bool)
+	Set(k K, v V)
+	Del(k K)
+}
+
+// Store - threadsafe stable store
+type Store[K comparable, V any] interface {
+	Update(update func(txn Txn[K, V]) any) any
+}
+
+type MemStore[K comparable, V any] interface {
+	Store[K, V]
+	Keys() []K
+}
+./kvstore/barger_store.go
+package kvstore
+
+import (
+	"encoding/json"
+	"errors"
+	"github.com/dgraph-io/badger/v4"
+	"sync"
+)
+
+func NewBargerStore[K comparable, V any](db *badger.DB) Store[K, V] {
+	return &badgerStore[K, V]{
+		mu: sync.Mutex{},
+		db: db,
+	}
+}
+
+type badgerStore[K comparable, V any] struct {
+	mu sync.Mutex
+	db *badger.DB
+}
+
+type badgerTxn[K comparable, V any] struct {
+	txn *badger.Txn
+}
+
+func (b *badgerTxn[K, V]) Get(k K) (v V, ok bool) {
+	kb, err := json.Marshal(k)
+	if err != nil {
+		panic(err)
+	}
+	i, err := b.txn.Get(kb)
+	if errors.Is(err, badger.ErrKeyNotFound) {
+		return v, false
+	}
+	if err != nil {
+		panic(err)
+	}
+	err = i.Value(func(val []byte) error {
+		return json.Unmarshal(val, &v)
+	})
+	if err != nil {
+		panic(err)
+	}
+	return v, true
+}
+
+func (b *badgerTxn[K, V]) Set(k K, v V) {
+	kb, err := json.Marshal(k)
+	if err != nil {
+		panic(err)
+	}
+	vb, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	err = b.txn.Set(kb, vb)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (b *badgerTxn[K, V]) Del(k K) {
+	kb, err := json.Marshal(k)
+	if err != nil {
+		panic(err)
+	}
+	err = b.txn.Delete(kb)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (b *badgerStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var out any
+	_ = b.db.Update(func(txn *badger.Txn) error {
+		out = update(&badgerTxn[K, V]{txn: txn})
+		return nil
+	})
+	return out
+}
+
+func (b *badgerStore[K, V]) Close() {
+	err := b.db.Close()
+	if err != nil {
+		panic(err)
+	}
+}
+./kvstore/mem_store.go
+package kvstore
+
+import "sync"
+
+func NewMemStore[K comparable, V any]() MemStore[K, V] {
+	return &memStore[K, V]{
+		mu:    sync.Mutex{},
+		store: make(map[K]V),
+	}
+}
+
+type memStore[K comparable, V any] struct {
+	mu    sync.Mutex
+	store map[K]V
+}
+
+func (m *memStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return update(m)
+}
+
+func (m *memStore[K, V]) Keys() (keys []K) {
+	keys = make([]K, 0, len(m.store))
+	for k := range m.store {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func (m *memStore[K, V]) Get(k K) (v V, ok bool) {
+	v, ok = m.store[k]
+	return v, ok
+}
+
+func (m *memStore[K, V]) Set(k K, v V) {
+	m.store[k] = v
+}
+
+func (m *memStore[K, V]) Del(k K) {
+	delete(m.store, k)
+}
+./subscriber/pool.go
+package subscriber
+
+import (
+	"sync"
+)
+
+type SubscriberPool[T any] interface {
+	Subscribe(T) func()
+	Iterate(func(T))
+}
+
+func NewPool[T any]() SubscriberPool[T] {
+	return &subscriberPool[T]{
+		mu:    sync.RWMutex{},
+		count: 0,
+		pool:  make(map[uint]T),
+	}
+}
+
+type subscriberPool[T any] struct {
+	mu    sync.RWMutex
+	count uint
+	pool  map[uint]T
+}
+
+func (p *subscriberPool[T]) Subscribe(t T) func() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	count := p.count
+	p.count++
+	p.pool[count] = t
+	return func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		delete(p.pool, count)
+	}
+}
+
+func (p *subscriberPool[T]) Iterate(f func(t T)) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	for _, t := range p.pool {
+		f(t)
+	}
+}
+./rpc/dispatcher.go
+package rpc
+
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+)
+
+type Dispatcher interface {
+	Register(name string, h any) Dispatcher
+	Handle(input []byte) (output []byte, err error)
+}
+
+func NewDispatcher() Dispatcher {
+	return &dispatcher{
+		handlerMap: make(map[string]handler),
+	}
+}
+
+type message struct {
+	Cmd  string `json:"cmd"`
+	Body []byte `json:"body"`
+}
+
+type handler struct {
+	handlerFunc reflect.Value
+	argType     reflect.Type
+}
+
+type dispatcher struct {
+	handlerMap map[string]handler
+}
+
+func (d *dispatcher) Register(name string, h any) Dispatcher {
+	handlerFunc := reflect.ValueOf(h)
+	handlerFuncType := handlerFunc.Type()
+	if handlerFuncType.Kind() != reflect.Func || handlerFuncType.NumIn() != 1 || handlerFuncType.NumOut() != 1 {
+		panic("handler must be of form func(*SomeRequest) *SomeResponse")
+	}
+	argType := handlerFuncType.In(0)
+	if argType.Kind() != reflect.Ptr || handlerFuncType.Out(0).Kind() != reflect.Ptr {
+		panic("handler arguments and return type must be pointers")
+	}
+	d.handlerMap[name] = handler{
+		handlerFunc: handlerFunc,
+		argType:     argType,
+	}
+	return d
+}
+
+func (d *dispatcher) Handle(input []byte) (output []byte, err error) {
+	msg := message{}
+	if err := json.Unmarshal(input, &msg); err != nil {
+		return nil, err
+	}
+
+	h, ok := d.handlerMap[msg.Cmd]
+	if !ok {
+		return nil, fmt.Errorf("command not found")
+	}
+
+	argPtr := reflect.New(h.argType.Elem()).Interface()
+	if err := json.Unmarshal(msg.Body, argPtr); err != nil {
+		return nil, err
+	}
+
+	out := h.handlerFunc.Call([]reflect.Value{reflect.ValueOf(argPtr)})[0].Interface()
+
+	output, err = json.Marshal(out)
+	if err != nil {
+		return nil, err
+	}
+	return output, nil
+}
+./rpc/rpc.go
+package rpc
+
+import (
+	"encoding/json"
+)
+
+type TransportFunc func([]byte) ([]byte, error)
+
+func zeroPtr[T any]() *T {
+	var v T
+	return &v
+}
+
+func RPC[Req any, Res any](transport TransportFunc, name string, req *Req) (res *Res, err error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	msg := message{
+		Cmd:  name,
+		Body: body,
+	}
+	b, err := json.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	b, err = transport(b)
+	if err != nil {
+		return nil, err
+	}
+
+	res = zeroPtr[Res]()
+	if err := json.Unmarshal(b, res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+./rpc/tcp_server.go
+package rpc
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"net"
+	"sync"
+	"time"
+)
+
+const (
+	TCP_TIMEOUT = 10 * time.Second
+)
+
+type TCPServer interface {
+	Handle(input []byte) (output []byte, err error)
+	ListenAndServe() error
+	Register(name string, h any) TCPServer
+	Close() error
+}
+
+func TCPTransport(addr string) TransportFunc {
+	return func(input []byte) (output []byte, err error) {
+		conn, err := net.Dial("tcp", addr)
+		if err != nil {
+			return nil, err
+		}
+		defer conn.Close()
+
+		err = conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
+		if err != nil {
+			return
+		}
+
+		conn.Write(input)
+		conn.Write([]byte("\n")) // '\n' notifies end of input
+		output, err = io.ReadAll(conn)
+		return output, err
+	}
+}
+
+type tcpServer struct {
+	mu         sync.Mutex
+	dispatcher Dispatcher
+	listener   net.Listener
+}
+
+func NewTCPServer(bindAddr string) (TCPServer, error) {
+	listener, err := net.Listen("tcp", bindAddr)
+	if err != nil {
+		return nil, err
+	}
+	return &tcpServer{
+		mu:         sync.Mutex{},
+		dispatcher: NewDispatcher(),
+		listener:   listener,
+	}, nil
+}
+
+func (s *tcpServer) Close() error {
+	return s.listener.Close()
+}
+
+func (s *tcpServer) Handle(input []byte) (output []byte, err error) {
+	return s.dispatcher.Handle(input)
+}
+
+func (s *tcpServer) Register(name string, h any) TCPServer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dispatcher.Register(name, h)
+	return s
+}
+
+func (s *tcpServer) handleConn(conn net.Conn) {
+	defer conn.Close()
+	err := conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
+	if err != nil {
+		return
+	}
+
+	msg, err := bufio.NewReader(conn).ReadString('\n') // read until '\n'
+	if err != nil {
+		return
+	}
+	b := []byte(msg)
+	{
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		b, err = s.dispatcher.Handle(b)
+	}
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	_, err = conn.Write(b)
+	if err != nil {
+		return
+	}
+}
+
+func (s *tcpServer) ListenAndServe() error {
+	for {
+		conn, err := s.listener.Accept()
+		if err != nil {
+			return err
+		}
+		go s.handleConn(conn)
+	}
+}
+./dist_kvstore/util.go
+package dist_kvstore
+
+import "fmt"
+
+func combineErrors(errs ...error) error {
+	var errorList []error
+
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		errorList = append(errorList, err)
+	}
+	if len(errorList) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%v", errorList)
+}
+./dist_kvstore/state_machine.go
+package dist_kvstore
+
+import (
+	"github.com/google/uuid"
+	"github.com/khanh101/paxos/kvstore"
+	"github.com/khanh101/paxos/paxos"
+)
+
+type Entry struct {
+	Key string `json:"key"`
+	Val string `json:"val"`
+	Ver uint64 `json:"ver"`
+}
+
+type Cmd struct {
+	Uuid    uuid.UUID `json:"uuid"`
+	Entries []Entry   `json:"entries"`
+}
+
+func makeCmd(entries []Entry) Cmd {
+	return Cmd{
+		Uuid:    uuid.New(),
+		Entries: entries,
+	}
+}
+
+func (cmd Cmd) Equal(other Cmd) bool {
+	return cmd.Uuid == other.Uuid
+}
+
+type stateMachine struct {
+	store kvstore.MemStore[string, Entry]
+}
+
+func newStateMachine() *stateMachine {
+	return &stateMachine{
+		store: kvstore.NewMemStore[string, Entry](),
+	}
+}
+
+func (sm *stateMachine) Get(key string) Entry {
+	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+		return getDefaultEntry(txn, key)
+	}).(Entry)
+}
+
+func (sm *stateMachine) Keys() []string {
+	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+		return sm.store.Keys()
+	}).([]string)
+}
+
+func (sm *stateMachine) Apply(logId paxos.LogId, cmd Cmd) {
+	sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+		for _, entry := range cmd.Entries {
+			oldEntry := getDefaultEntry(txn, entry.Key)
+			if entry.Ver <= oldEntry.Ver {
+				continue // ignore update
+			}
+			if len(entry.Val) == 0 {
+				txn.Del(entry.Key)
+			} else {
+				txn.Set(entry.Key, entry)
+			}
+		}
+		return nil
+	})
+}
+./dist_kvstore/http.go
+package dist_kvstore
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
+)
+
+type versionedValue struct {
+	Val string `json:"val"`
+	Ver uint64 `json:"ver"`
+}
+
+func HttpHandle(ds Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/kvstore/") {
+			http.NotFound(w, r)
+			return
+		}
+		defer r.Body.Close()
+
+		key, _ := strings.CutPrefix(r.URL.Path, "/kvstore/")
+		if len(key) == 0 {
+			b, err := json.Marshal(ds.Keys())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			_, err = w.Write(b)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			entry := ds.Get(key)
+			b, err := json.Marshal(entry)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			_, err = w.Write(b)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		case http.MethodPost, http.MethodPut:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			v := versionedValue{}
+			err = json.Unmarshal(body, &v)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			cmd := makeCmd([]Entry{
+				{
+					Key: key,
+					Val: v.Val,
+					Ver: v.Ver,
+				},
+			})
+
+			ds.Set(cmd)
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.Error(w, "method must be GET POST PUT", http.StatusBadRequest)
+		}
+
+	}
+}
 ./dist_kvstore/kvstore.go
 package dist_kvstore
 
@@ -613,260 +1199,50 @@ func (ds *store) Get(key string) Entry {
 func (ds *store) Keys() []string {
 	return ds.memStore.Keys()
 }
-./dist_kvstore/state_machine.go
-package dist_kvstore
-
-import (
-	"github.com/google/uuid"
-	"github.com/khanh101/paxos/kvstore"
-	"github.com/khanh101/paxos/paxos"
-)
-
-type Entry struct {
-	Key string `json:"key"`
-	Val string `json:"val"`
-	Ver uint64 `json:"ver"`
-}
-
-type Cmd struct {
-	Uuid    uuid.UUID `json:"uuid"`
-	Entries []Entry   `json:"entries"`
-}
-
-func makeCmd(entries []Entry) Cmd {
-	return Cmd{
-		Uuid:    uuid.New(),
-		Entries: entries,
-	}
-}
-
-func (cmd Cmd) Equal(other Cmd) bool {
-	return cmd.Uuid == other.Uuid
-}
-
-type stateMachine struct {
-	store kvstore.MemStore[string, Entry]
-}
-
-func newStateMachine() *stateMachine {
-	return &stateMachine{
-		store: kvstore.NewMemStore[string, Entry](),
-	}
-}
-
-func (sm *stateMachine) Get(key string) Entry {
-	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
-		return getDefaultEntry(txn, key)
-	}).(Entry)
-}
-
-func (sm *stateMachine) Keys() []string {
-	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
-		return sm.store.Keys()
-	}).([]string)
-}
-
-func (sm *stateMachine) Apply(logId paxos.LogId, cmd Cmd) {
-	sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
-		for _, entry := range cmd.Entries {
-			oldEntry := getDefaultEntry(txn, entry.Key)
-			if entry.Ver <= oldEntry.Ver {
-				continue // ignore update
-			}
-			if len(entry.Val) == 0 {
-				txn.Del(entry.Key)
-			} else {
-				txn.Set(entry.Key, entry)
-			}
-		}
-		return nil
-	})
-}
-./dist_kvstore/util.go
-package dist_kvstore
-
-import "fmt"
-
-func combineErrors(errs ...error) error {
-	var errorList []error
-
-	for _, err := range errs {
-		if err == nil {
-			continue
-		}
-		errorList = append(errorList, err)
-	}
-	if len(errorList) == 0 {
-		return nil
-	}
-	return fmt.Errorf("%v", errorList)
-}
-./dist_kvstore/http.go
-package dist_kvstore
-
-import (
-	"encoding/json"
-	"io"
-	"net/http"
-	"strings"
-)
-
-type versionedValue struct {
-	Val string `json:"val"`
-	Ver uint64 `json:"ver"`
-}
-
-func HttpHandle(ds Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/kvstore/") {
-			http.NotFound(w, r)
-			return
-		}
-		defer r.Body.Close()
-
-		key, _ := strings.CutPrefix(r.URL.Path, "/kvstore/")
-		if len(key) == 0 {
-			b, err := json.Marshal(ds.Keys())
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			_, err = w.Write(b)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-			entry := ds.Get(key)
-			b, err := json.Marshal(entry)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			_, err = w.Write(b)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		case http.MethodPost, http.MethodPut:
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			v := versionedValue{}
-			err = json.Unmarshal(body, &v)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			cmd := makeCmd([]Entry{
-				{
-					Key: key,
-					Val: v.Val,
-					Ver: v.Ver,
-				},
-			})
-
-			ds.Set(cmd)
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.Error(w, "method must be GET POST PUT", http.StatusBadRequest)
-		}
-
-	}
-}
-./paxos/simple_acceptor.go
+./paxos/message.go
 package paxos
 
-import (
-	"github.com/khanh101/paxos/kvstore"
-)
+type Request interface {
+}
 
-// Proposal - roundId * 4294967296 + nodeId
-type Proposal uint64
+type Response interface {
+}
+type PrepareRequest struct {
+	LogId    LogId    `json:"log_id"`
+	Proposal Proposal `json:"proposal"`
+}
 
-type LogId uint64
+type PrepareResponse[T any] struct {
+	Promise Promise[T] `json:"promise"`
+	Ok      bool       `json:"ok"`
+}
 
-const (
-	INITIAL   Proposal = 0
-	COMMITTED Proposal = 18446744073709551615
-)
+type AcceptRequest[T any] struct {
+	LogId    LogId    `json:"log_id"`
+	Proposal Proposal `json:"proposal"`
+	Value    T        `json:"value"`
+}
 
-// Promise - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
-type Promise[T any] struct {
+type AcceptResponse[T any] struct {
+	Promise Promise[T] `json:"promise"`
+	Ok      bool       `json:"ok"`
+}
+
+type CommitRequest[T any] struct {
+	LogId LogId `json:"log_id"`
+	Value T     `json:"value"`
+}
+
+type CommitResponse struct {
+}
+
+type PollRequest struct {
+	LogId LogId `json:"log_id"`
+}
+
+type PollResponse[T any] struct {
 	Proposal Proposal `json:"proposal"`
 	Value    *T       `json:"value"`
-}
-
-func zero[T any]() T {
-	var v T
-	return v
-}
-
-type simpleAcceptor[T any] struct {
-	log kvstore.Store[LogId, Promise[T]]
-}
-
-func getDefaultLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
-	v, ok := txn.Get(logId)
-	if !ok {
-		return Promise[T]{
-			Proposal: INITIAL,
-			Value:    nil,
-		}
-	}
-	return v
-}
-
-func (a *simpleAcceptor[T]) get(logId LogId) (Proposal, *T) {
-	promise := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		return getDefaultLogEntry(txn, logId)
-	}).(Promise[T])
-	return promise.Proposal, promise.Value
-}
-
-func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
-	a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		txn.Set(logId, Promise[T]{
-			Proposal: COMMITTED,
-			Value:    &v,
-		})
-		return nil
-	})
-}
-
-func (a *simpleAcceptor[T]) prepare(logId LogId, proposal Proposal) (Promise[T], bool) {
-	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		p := getDefaultLogEntry(txn, logId)
-		if !(p.Proposal < proposal) {
-			return [2]any{p, false}
-		}
-		txn.Set(logId, Promise[T]{
-			Proposal: proposal,
-			Value:    p.Value,
-		})
-		return [2]any{p, true}
-	}).([2]any)
-	promise, ok := r[0].(Promise[T]), r[1].(bool)
-	return promise, ok
-}
-
-func (a *simpleAcceptor[T]) accept(logId LogId, proposal Proposal, value T) (Promise[T], bool) {
-	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
-		p := getDefaultLogEntry(txn, logId)
-		if !(p.Proposal <= proposal) {
-			return [2]any{p, false}
-		}
-		txn.Set(logId, Promise[T]{
-			Proposal: proposal,
-			Value:    &value,
-		})
-		return [2]any{p, true}
-	}).([2]any)
-	promise, ok := r[0].(Promise[T]), r[1].(bool)
-	return promise, ok
 }
 ./paxos/acceptor.go
 package paxos
@@ -985,50 +1361,96 @@ func (a *acceptor[T]) HandleRPC(r Request) Response {
 		return nil
 	}
 }
-./paxos/message.go
+./paxos/simple_acceptor.go
 package paxos
 
-type Request interface {
-}
+import (
+	"github.com/khanh101/paxos/kvstore"
+)
 
-type Response interface {
-}
-type PrepareRequest struct {
-	LogId    LogId    `json:"log_id"`
-	Proposal Proposal `json:"proposal"`
-}
+// Proposal - roundId * 4294967296 + nodeId
+type Proposal uint64
 
-type PrepareResponse[T any] struct {
-	Promise Promise[T] `json:"promise"`
-	Ok      bool       `json:"ok"`
-}
+type LogId uint64
 
-type AcceptRequest[T any] struct {
-	LogId    LogId    `json:"log_id"`
-	Proposal Proposal `json:"proposal"`
-	Value    T        `json:"value"`
-}
+const (
+	INITIAL   Proposal = 0
+	COMMITTED Proposal = 18446744073709551615
+)
 
-type AcceptResponse[T any] struct {
-	Promise Promise[T] `json:"promise"`
-	Ok      bool       `json:"ok"`
-}
-
-type CommitRequest[T any] struct {
-	LogId LogId `json:"log_id"`
-	Value T     `json:"value"`
-}
-
-type CommitResponse struct {
-}
-
-type PollRequest struct {
-	LogId LogId `json:"log_id"`
-}
-
-type PollResponse[T any] struct {
+// Promise - promise to reject all PREPARE if proposal <= this and all ACCEPT if proposal < this
+type Promise[T any] struct {
 	Proposal Proposal `json:"proposal"`
 	Value    *T       `json:"value"`
+}
+
+func zero[T any]() T {
+	var v T
+	return v
+}
+
+type simpleAcceptor[T any] struct {
+	log kvstore.Store[LogId, Promise[T]]
+}
+
+func getDefaultLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
+	v, ok := txn.Get(logId)
+	if !ok {
+		return Promise[T]{
+			Proposal: INITIAL,
+			Value:    nil,
+		}
+	}
+	return v
+}
+
+func (a *simpleAcceptor[T]) get(logId LogId) (Proposal, *T) {
+	promise := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+		return getDefaultLogEntry(txn, logId)
+	}).(Promise[T])
+	return promise.Proposal, promise.Value
+}
+
+func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
+	a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+		txn.Set(logId, Promise[T]{
+			Proposal: COMMITTED,
+			Value:    &v,
+		})
+		return nil
+	})
+}
+
+func (a *simpleAcceptor[T]) prepare(logId LogId, proposal Proposal) (Promise[T], bool) {
+	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+		p := getDefaultLogEntry(txn, logId)
+		if !(p.Proposal < proposal) {
+			return [2]any{p, false}
+		}
+		txn.Set(logId, Promise[T]{
+			Proposal: proposal,
+			Value:    p.Value,
+		})
+		return [2]any{p, true}
+	}).([2]any)
+	promise, ok := r[0].(Promise[T]), r[1].(bool)
+	return promise, ok
+}
+
+func (a *simpleAcceptor[T]) accept(logId LogId, proposal Proposal, value T) (Promise[T], bool) {
+	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
+		p := getDefaultLogEntry(txn, logId)
+		if !(p.Proposal <= proposal) {
+			return [2]any{p, false}
+		}
+		txn.Set(logId, Promise[T]{
+			Proposal: proposal,
+			Value:    &value,
+		})
+		return [2]any{p, true}
+	}).([2]any)
+	promise, ok := r[0].(Promise[T]), r[1].(bool)
+	return promise, ok
 }
 ./paxos/proposer.go
 package paxos
@@ -1204,428 +1626,6 @@ func LogCompact[T any](rpcList []RPC) {
 	 */
 	// compressLog[T any](ts ...T) T // type signature for log compression where T is type of value
 }
-./kvstore/mem_store.go
-package kvstore
-
-import "sync"
-
-func NewMemStore[K comparable, V any]() MemStore[K, V] {
-	return &memStore[K, V]{
-		mu:    sync.Mutex{},
-		store: make(map[K]V),
-	}
-}
-
-type memStore[K comparable, V any] struct {
-	mu    sync.Mutex
-	store map[K]V
-}
-
-func (m *memStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return update(m)
-}
-
-func (m *memStore[K, V]) Keys() (keys []K) {
-	keys = make([]K, 0, len(m.store))
-	for k := range m.store {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-func (m *memStore[K, V]) Get(k K) (v V, ok bool) {
-	v, ok = m.store[k]
-	return v, ok
-}
-
-func (m *memStore[K, V]) Set(k K, v V) {
-	m.store[k] = v
-}
-
-func (m *memStore[K, V]) Del(k K) {
-	delete(m.store, k)
-}
-./kvstore/store.go
-package kvstore
-
-type Txn[K comparable, V any] interface {
-	Get(k K) (v V, ok bool)
-	Set(k K, v V)
-	Del(k K)
-}
-
-// Store - threadsafe stable store
-type Store[K comparable, V any] interface {
-	Update(update func(txn Txn[K, V]) any) any
-}
-
-type MemStore[K comparable, V any] interface {
-	Store[K, V]
-	Keys() []K
-}
-./kvstore/barger_store.go
-package kvstore
-
-import (
-	"encoding/json"
-	"errors"
-	"github.com/dgraph-io/badger/v4"
-	"sync"
-)
-
-func NewBargerStore[K comparable, V any](db *badger.DB) Store[K, V] {
-	return &badgerStore[K, V]{
-		mu: sync.Mutex{},
-		db: db,
-	}
-}
-
-type badgerStore[K comparable, V any] struct {
-	mu sync.Mutex
-	db *badger.DB
-}
-
-type badgerTxn[K comparable, V any] struct {
-	txn *badger.Txn
-}
-
-func (b *badgerTxn[K, V]) Get(k K) (v V, ok bool) {
-	kb, err := json.Marshal(k)
-	if err != nil {
-		panic(err)
-	}
-	i, err := b.txn.Get(kb)
-	if errors.Is(err, badger.ErrKeyNotFound) {
-		return v, false
-	}
-	if err != nil {
-		panic(err)
-	}
-	err = i.Value(func(val []byte) error {
-		return json.Unmarshal(val, &v)
-	})
-	if err != nil {
-		panic(err)
-	}
-	return v, true
-}
-
-func (b *badgerTxn[K, V]) Set(k K, v V) {
-	kb, err := json.Marshal(k)
-	if err != nil {
-		panic(err)
-	}
-	vb, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	err = b.txn.Set(kb, vb)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (b *badgerTxn[K, V]) Del(k K) {
-	kb, err := json.Marshal(k)
-	if err != nil {
-		panic(err)
-	}
-	err = b.txn.Delete(kb)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (b *badgerStore[K, V]) Update(update func(txn Txn[K, V]) any) any {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	var out any
-	_ = b.db.Update(func(txn *badger.Txn) error {
-		out = update(&badgerTxn[K, V]{txn: txn})
-		return nil
-	})
-	return out
-}
-
-func (b *badgerStore[K, V]) Close() {
-	err := b.db.Close()
-	if err != nil {
-		panic(err)
-	}
-}
-./subscriber/pool.go
-package subscriber
-
-import (
-	"sync"
-)
-
-type SubscriberPool[T any] interface {
-	Subscribe(T) func()
-	Iterate(func(T))
-}
-
-func NewPool[T any]() SubscriberPool[T] {
-	return &subscriberPool[T]{
-		mu:    sync.RWMutex{},
-		count: 0,
-		pool:  make(map[uint]T),
-	}
-}
-
-type subscriberPool[T any] struct {
-	mu    sync.RWMutex
-	count uint
-	pool  map[uint]T
-}
-
-func (p *subscriberPool[T]) Subscribe(t T) func() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	count := p.count
-	p.count++
-	p.pool[count] = t
-	return func() {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		delete(p.pool, count)
-	}
-}
-
-func (p *subscriberPool[T]) Iterate(f func(t T)) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	for _, t := range p.pool {
-		f(t)
-	}
-}
-./rpc/dispatcher.go
-package rpc
-
-import (
-	"encoding/json"
-	"fmt"
-	"reflect"
-)
-
-type Dispatcher interface {
-	Register(name string, h any) Dispatcher
-	Handle(input []byte) (output []byte, err error)
-}
-
-func NewDispatcher() Dispatcher {
-	return &dispatcher{
-		handlerMap: make(map[string]handler),
-	}
-}
-
-type message struct {
-	Cmd  string `json:"cmd"`
-	Body []byte `json:"body"`
-}
-
-type handler struct {
-	handlerFunc reflect.Value
-	argType     reflect.Type
-}
-
-type dispatcher struct {
-	handlerMap map[string]handler
-}
-
-func (d *dispatcher) Register(name string, h any) Dispatcher {
-	handlerFunc := reflect.ValueOf(h)
-	handlerFuncType := handlerFunc.Type()
-	if handlerFuncType.Kind() != reflect.Func || handlerFuncType.NumIn() != 1 || handlerFuncType.NumOut() != 1 {
-		panic("handler must be of form func(*SomeRequest) *SomeResponse")
-	}
-	argType := handlerFuncType.In(0)
-	if argType.Kind() != reflect.Ptr || handlerFuncType.Out(0).Kind() != reflect.Ptr {
-		panic("handler arguments and return type must be pointers")
-	}
-	d.handlerMap[name] = handler{
-		handlerFunc: handlerFunc,
-		argType:     argType,
-	}
-	return d
-}
-
-func (d *dispatcher) Handle(input []byte) (output []byte, err error) {
-	msg := message{}
-	if err := json.Unmarshal(input, &msg); err != nil {
-		return nil, err
-	}
-
-	h, ok := d.handlerMap[msg.Cmd]
-	if !ok {
-		return nil, fmt.Errorf("command not found")
-	}
-
-	argPtr := reflect.New(h.argType.Elem()).Interface()
-	if err := json.Unmarshal(msg.Body, argPtr); err != nil {
-		return nil, err
-	}
-
-	out := h.handlerFunc.Call([]reflect.Value{reflect.ValueOf(argPtr)})[0].Interface()
-
-	output, err = json.Marshal(out)
-	if err != nil {
-		return nil, err
-	}
-	return output, nil
-}
-./rpc/tcp_server.go
-package rpc
-
-import (
-	"bufio"
-	"fmt"
-	"io"
-	"net"
-	"sync"
-	"time"
-)
-
-const (
-	TCP_TIMEOUT = 10 * time.Second
-)
-
-type TCPServer interface {
-	Handle(input []byte) (output []byte, err error)
-	ListenAndServe() error
-	Register(name string, h any) TCPServer
-	Close() error
-}
-
-func TCPTransport(addr string) TransportFunc {
-	return func(input []byte) (output []byte, err error) {
-		conn, err := net.Dial("tcp", addr)
-		if err != nil {
-			return nil, err
-		}
-		defer conn.Close()
-
-		err = conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
-		if err != nil {
-			return
-		}
-
-		conn.Write(input)
-		conn.Write([]byte("\n")) // '\n' notifies end of input
-		output, err = io.ReadAll(conn)
-		return output, err
-	}
-}
-
-type tcpServer struct {
-	mu         sync.Mutex
-	dispatcher Dispatcher
-	listener   net.Listener
-}
-
-func NewTCPServer(bindAddr string) (TCPServer, error) {
-	listener, err := net.Listen("tcp", bindAddr)
-	if err != nil {
-		return nil, err
-	}
-	return &tcpServer{
-		mu:         sync.Mutex{},
-		dispatcher: NewDispatcher(),
-		listener:   listener,
-	}, nil
-}
-
-func (s *tcpServer) Close() error {
-	return s.listener.Close()
-}
-
-func (s *tcpServer) Handle(input []byte) (output []byte, err error) {
-	return s.dispatcher.Handle(input)
-}
-
-func (s *tcpServer) Register(name string, h any) TCPServer {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.dispatcher.Register(name, h)
-	return s
-}
-
-func (s *tcpServer) handleConn(conn net.Conn) {
-	defer conn.Close()
-	err := conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
-	if err != nil {
-		return
-	}
-
-	msg, err := bufio.NewReader(conn).ReadString('\n') // read until '\n'
-	if err != nil {
-		return
-	}
-	b := []byte(msg)
-	{
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		b, err = s.dispatcher.Handle(b)
-	}
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	_, err = conn.Write(b)
-	if err != nil {
-		return
-	}
-}
-
-func (s *tcpServer) ListenAndServe() error {
-	for {
-		conn, err := s.listener.Accept()
-		if err != nil {
-			return err
-		}
-		go s.handleConn(conn)
-	}
-}
-./rpc/rpc.go
-package rpc
-
-import (
-	"encoding/json"
-)
-
-type TransportFunc func([]byte) ([]byte, error)
-
-func zeroPtr[T any]() *T {
-	var v T
-	return &v
-}
-
-func RPC[Req any, Res any](transport TransportFunc, name string, req *Req) (res *Res, err error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	msg := message{
-		Cmd:  name,
-		Body: body,
-	}
-	b, err := json.Marshal(msg)
-	if err != nil {
-		return nil, err
-	}
-	b, err = transport(b)
-	if err != nil {
-		return nil, err
-	}
-
-	res = zeroPtr[Res]()
-	if err := json.Unmarshal(b, res); err != nil {
-		return nil, err
-	}
-	return res, nil
-}
 ./main.go
 package main
 
@@ -1764,7 +1764,44 @@ class KVStoreDict:
 
     def __repr__(self) -> str:
         return repr(self.__dict__())
-./conf/kvstore.json
+./data/kvstore.json
+[
+  {
+    "badger": "data/acceptor_142",
+    "rpc": "10.2.56.142:13800",
+    "store": "localhost:4000"
+  },
+  {
+    "badger": "data/acceptor_91",
+    "rpc": "10.2.56.91:13800",
+    "store": "localhost:4000"
+  },
+  {
+    "badger": "data/acceptor_209",
+    "rpc": "10.2.56.209:13800",
+    "store": "localhost:4000"
+  },
+  {
+    "badger": "data/acceptor_216",
+    "rpc": "10.2.56.216:13800",
+    "store": "localhost:4000"
+  },
+  {
+    "badger": "data/acceptor_217",
+    "rpc": "10.2.56.217:13800",
+    "store": "localhost:4000"
+  },
+  {
+    "badger": "data/acceptor_135",
+    "rpc": "10.2.56.135:13800",
+    "store": "localhost:4000"
+  },
+  {
+    "badger": "data/acceptor_223",
+    "rpc": "10.2.56.223:13800",
+    "store": "localhost:4000"
+  }
+]./conf/kvstore.json
 [
   {
     "badger": "data/acceptor0",
