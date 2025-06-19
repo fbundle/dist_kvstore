@@ -11,6 +11,10 @@ import (
 )
 
 func NewKey(s string) Key {
+	if len(s) == 0 {
+		fmt.Println("WARNING: no key is used")
+		return key(nil)
+	}
 	hash := sha256.Sum256([]byte(s))
 	return key(hash[:])
 }
@@ -60,6 +64,10 @@ func (k key) DecryptFromReader(reader io.Reader) (plaintext []byte, err error) {
 }
 
 func (k key) Encrypt(plaintext []byte) (ciphertext []byte, err error) {
+	if len(k) == 0 {
+		return plaintext, nil
+	}
+
 	block, err := aes.NewCipher(k)
 	if err != nil {
 		return nil, err
@@ -82,6 +90,10 @@ func (k key) Encrypt(plaintext []byte) (ciphertext []byte, err error) {
 }
 
 func (k key) Decrypt(ciphertext []byte) (plaintext []byte, err error) {
+	if len(k) == 0 {
+		return ciphertext, nil
+	}
+
 	block, err := aes.NewCipher(k)
 	if err != nil {
 		return nil, err

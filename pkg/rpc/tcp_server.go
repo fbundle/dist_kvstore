@@ -24,9 +24,6 @@ type TCPServer interface {
 
 func getKey() crypt.Key {
 	keyStr := os.Getenv(AES_KEY)
-	if len(keyStr) == 0 {
-		panic("no key found")
-	}
 	key := crypt.NewKey(keyStr)
 	return key
 }
