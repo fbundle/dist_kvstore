@@ -74,4 +74,4 @@ class KVStoreDict:
     def __repr__(self) -> str:
         return repr(self.__dict__())
 
-kvstore = KVStoreDict()
+kv = KVStoreDict()
