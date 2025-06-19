@@ -9,11 +9,11 @@ TMP_DIR = "tmp"
 CONFIG_PATH = f"{TMP_DIR}/config.json"
 RUN_PATH = f"{TMP_DIR}/run_all.sh"
 STOP_PATH = f"{TMP_DIR}/stop_all.sh"
-GOBIN = "$HOME/ws/miniforge3/envs/test/bin/go"
+GOBIN = "~/ws/miniforge3/envs/test/bin/go"
 TMUX_SESSION = "kvstore"
 AES_KEY_ENV = "AES_KEY"
 
-CODE_ROOTDIR="$HOME/ws"
+CODE_ROOTDIR="~/ws"
 
 if __name__ == "__main__":
     # aes_key = "this is an aes key"
