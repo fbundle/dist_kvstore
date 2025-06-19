@@ -1,9 +1,7 @@
 package rpc
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"sync"
@@ -41,43 +39,30 @@ func TCPTransport(addr string) TransportFunc {
 
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
+			fmt.Println(err)
 			return nil, err
 		}
 		defer conn.Close()
 
 		err = conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
 		if err != nil {
+			fmt.Println(err)
 			return nil, err
 		}
 
-		// encrypt before send
-		{
-			b_old := b
-			b, err = key.Encrypt(b_old)
-			if err != nil {
-				fmt.Println(len(b_old), err)
-				return nil, err
-			}
-		}
-
-		conn.Write(b)
-		conn.Write([]byte("\n")) // '\n' notifies end of input
-		b, err = io.ReadAll(conn)
+		err = key.EncryptToWriter(b, conn)
 		if err != nil {
+			fmt.Println(err)
 			return nil, err
 		}
 
-		// decrypt after receive
-		{
-			b_old := b
-			b, err = key.Decrypt(b_old)
-			if err != nil {
-				fmt.Println(len(b_old), err)
-				return nil, err
-			}
+		b, err = key.DecryptFromReader(conn)
+		if err != nil {
+			fmt.Println(err)
+			return nil, err
 		}
 
-		return b, err
+		return b, nil
 	}
 }
 
@@ -117,50 +102,33 @@ func (s *tcpServer) Register(name string, h any) TCPServer {
 }
 
 func (s *tcpServer) handleConn(conn net.Conn) {
+	key := s.key
 	defer conn.Close()
 	err := conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
-	msg, err := bufio.NewReader(conn).ReadString('\n') // read until '\n'
+	b, err := key.DecryptFromReader(conn)
 	if err != nil {
+		fmt.Println(err)
 		return
-	}
-	b := []byte(msg)
-
-	// decrypt after receive
-	{
-		b_old := b
-		b, err = s.key.Decrypt(b_old)
-		if err != nil {
-			fmt.Println(len(b_old), err)
-			return
-		}
 	}
 
 	{
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		b, err = s.dispatcher.Handle(b)
-	}
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	// encrypt before send
-	{
-		b_old := b
-		b, err = s.key.Encrypt(b_old)
 		if err != nil {
-			fmt.Println(len(b_old), err)
+			fmt.Println(err)
 			return
 		}
 	}
 
-	_, err = conn.Write(b)
+	err = key.EncryptToWriter(b, conn)
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 }
