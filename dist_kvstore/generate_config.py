@@ -25,5 +25,6 @@ if __name__ == "__main__":
     if os.path.exists("tmp"):
         shutil.rmtree("tmp")
     os.makedirs("tmp")
-    with open("tmp/config.json") as f:
+
+    with open("tmp/config.json", "w") as f:
         f.write(json.dumps(config, indent=2))
