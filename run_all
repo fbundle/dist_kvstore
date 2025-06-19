@@ -5,7 +5,7 @@ HOSTLIST=$2
 PRIVATEKEY=$3
 
 # generate config
-python $APPNAME/generate_config.py $APPNAME $HOSTLIST $PRIVATEKEY
+# python $APPNAME/generate_config.py $APPNAME $HOSTLIST $PRIVATEKEY
 
 # run in each node
 IFS=',' read -ra HOSTLIST_ARR <<< $HOSTLIST
