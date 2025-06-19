@@ -5,6 +5,7 @@ import json
 
 TMP_DIR = "tmp"
 CONFIG_PATH = f"{TMP_DIR}/config.json"
+RUN_PATH = f"{TMP_DIR}/run"
 TMUX_SESSION = "kvstore"
 
 if __name__ == "__main__":
@@ -39,12 +40,14 @@ if __name__ == "__main__":
             yield command
 
 
-    # write config
     if not os.path.exists(TMP_DIR):
         os.makedirs(TMP_DIR)
+    # write config
     with open(CONFIG_PATH, "w") as f:
         f.write(json.dumps(list(make_config_list()), indent=4))
     
     # generate command
-    for line in make_command_list():
-        print(line)
+    with open(RUN_PATH, "w") as f:
+        for line in make_command_list():
+            f.write(line + ";\n")
+    
