@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
-addr_list_str=$1
-python cmd/util/make_script.py $addr_list_str
-bash tmp/run_all.sh
+aes_key=$1
+addr_list_str=$2
+python cmd/util/make_script.py $aes_key $addr_list_str || exit 1;
+bash tmp/run_all.sh  || exit 1;
