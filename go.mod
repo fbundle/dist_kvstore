@@ -1,6 +1,6 @@
 module github.com/khanh101/paxos
 
-go 1.24
+go 1.24.4
 
 require (
 	github.com/dgraph-io/badger/v4 v4.7.0
