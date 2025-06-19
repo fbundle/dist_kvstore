@@ -35,7 +35,7 @@ if __name__ == "__main__":
             node_command = ""
             node_command += f"tmux has-session -t {TMUX_SESSION} 2>/dev/null && tmux kill-session -t {TMUX_SESSION}"
             node_command += "; "
-            node_command += f"tmux new-session -s {TMUX_SESSION} -d \"cd {cwd}; go run main.go {CONFIG_PATH} {i} | tee run.log\""
+            node_command += f"tmux new-session -s {TMUX_SESSION} -d \"cd {cwd}; go run main.go {CONFIG_PATH} {i} |& tee run.log\""
             command = f"ssh {addr} \'{node_command}\'"
             yield command
 
