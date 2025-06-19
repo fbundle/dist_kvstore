@@ -1670,7 +1670,7 @@ if __name__ == "__main__":
         # copy code
         for addr in addr_list:
             target = os.path.dirname(cwd)
-            command = f"rsync -avh --progress --delete {cwd} {addr}:{target}/ &"
+            command = f"rsync -avh --progress {cwd} {addr}:{target}/ &"
             yield command
         
         yield "wait"
@@ -1784,43 +1784,6 @@ class KVStoreDict:
         "rpc": "10.2.56.223:13800",
         "store": "localhost:4000"
     }
-]./data/kvstore.json
-[
-  {
-    "badger": "data/acceptor_142",
-    "rpc": "10.2.56.142:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_91",
-    "rpc": "10.2.56.91:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_209",
-    "rpc": "10.2.56.209:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_216",
-    "rpc": "10.2.56.216:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_217",
-    "rpc": "10.2.56.217:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_135",
-    "rpc": "10.2.56.135:13800",
-    "store": "localhost:4000"
-  },
-  {
-    "badger": "data/acceptor_223",
-    "rpc": "10.2.56.223:13800",
-    "store": "localhost:4000"
-  }
 ]./conf/kvstore.json
 [
   {

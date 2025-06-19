@@ -25,7 +25,7 @@ if __name__ == "__main__":
         # copy code
         for addr in addr_list:
             target = os.path.dirname(cwd)
-            command = f"rsync -avh --progress --delete {cwd} {addr}:{target}/ &"
+            command = f"rsync -avh --progress {cwd} {addr}:{target}/ &"
             yield command
         
         yield "wait"
