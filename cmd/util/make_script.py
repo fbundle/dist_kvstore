@@ -49,5 +49,5 @@ if __name__ == "__main__":
     # generate command
     with open(RUN_PATH, "w") as f:
         for line in make_command_list():
-            f.write(line + ";\n")
+            f.write(line + "\n")
     

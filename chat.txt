@@ -1694,7 +1694,7 @@ if __name__ == "__main__":
     # generate command
     with open(RUN_PATH, "w") as f:
         for line in make_command_list():
-            f.write(line + ";\n")
+            f.write(line + "\n")
     
 ./client.py
 from typing import Iterator, Any
@@ -1775,8 +1775,23 @@ class KVStoreDict:
 ./tmp/config.json
 [
     {
+        "badger": "data/acceptor_10.2.56.135",
+        "rpc": "10.2.56.135:13800",
+        "store": "localhost:4000"
+    },
+    {
         "badger": "data/acceptor_10.2.56.142",
         "rpc": "10.2.56.142:13800",
+        "store": "localhost:4000"
+    },
+    {
+        "badger": "data/acceptor_10.2.56.209",
+        "rpc": "10.2.56.209:13800",
+        "store": "localhost:4000"
+    },
+    {
+        "badger": "data/acceptor_10.2.56.217",
+        "rpc": "10.2.56.217:13800",
         "store": "localhost:4000"
     },
     {
