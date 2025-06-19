@@ -1,1 +1,2 @@
 vendor/go1.24.1.linux-amd64.tar.gz filter=lfs diff=lfs merge=lfs -text
+golang/go1.24.1.linux-amd64.tar.gz filter=lfs diff=lfs merge=lfs -text
