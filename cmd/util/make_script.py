@@ -53,8 +53,10 @@ if __name__ == "__main__":
             node_command += f"tmux has-session -t {TMUX_SESSION} 2>/dev/null && tmux kill-session -t {TMUX_SESSION}"
             node_command += "; "
             node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {code_dir}; {AES_KEY_ENV}={aes_key} {GOBIN} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
-            command = f"ssh {addr} \"{node_command}\""
+            command = f"ssh {addr} \"{node_command}\" &"
             yield command
+        
+        yield "wait"
     
     def make_stop_command_list() -> Iterator[str]:
         for i, addr in enumerate(addr_list):
