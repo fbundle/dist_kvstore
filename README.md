@@ -33,9 +33,9 @@ curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "", "ver": <ver>}'
 
 ```bash
 # fire up cluster
-./run_all "<private_key_for_rpc>" "<ip1>,<ip2>,<ip3>"
+./run_all "<ip1>,<ip2>,<ip3>" "<private_key_for_rpc>"
 # stop running
-./stop_all "<private_key_for_rpc>" "<ip1>,<ip2>,<ip3>"
+./stop_all "<ip1>,<ip2>,<ip3>" "<private_key_for_rpc>"
 ```
 
 ## TODO 
