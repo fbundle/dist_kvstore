@@ -4,7 +4,6 @@ import shutil
 import os
 import json
 
-cwd = os.getcwd()
 
 TMP_DIR = "tmp"
 CONFIG_PATH = f"{TMP_DIR}/config.json"
@@ -14,12 +13,14 @@ GOBIN = "/home/khanh/ws/miniforge3/envs/test/bin/go"
 TMUX_SESSION = "kvstore"
 AES_KEY = "AES_KEY"
 
-CODE_DIR = f"$HOME/ws/{os.path.basename(cwd)}"
+CODE_ROOTDIR="$HOME/ws"
 
 if __name__ == "__main__":
     # aes_key = "this is an aes key"
     # addr_list_str = "192.168.1.100,192.168.1.101,192.168.1.102"
-    
+    cwd = os.getcwd()
+    code_dir = f"{CODE_ROOTDIR}/{os.path.basename(cwd)}"
+
 
     if len(sys.argv) >= 3:
         addr_list_str = sys.argv[1]
@@ -41,7 +42,7 @@ if __name__ == "__main__":
     def make_command_list() -> Iterator[str]:
         # copy code
         for addr in addr_list:
-            command = f"rsync -avh --progress --delete --exclude \"data\" {cwd} {addr}:{os.path.dirname(CODE_DIR)}/ &"
+            command = f"rsync -avh --progress --delete --exclude \"data\" {cwd} {addr}:{os.path.dirname(code_dir)}/ &"
             yield command
         
         yield "wait"
@@ -51,7 +52,7 @@ if __name__ == "__main__":
             node_command = ""
             node_command += f"tmux has-session -t {TMUX_SESSION} 2>/dev/null && tmux kill-session -t {TMUX_SESSION}"
             node_command += "; "
-            node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {CODE_DIR}; {AES_KEY}=\"{aes_key}\" {GOBIN} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
+            node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {code_dir}; {AES_KEY}=\"{aes_key}\" {GOBIN} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
             command = f"ssh {addr} \'bash -lc \"{node_command}\"\'"
             yield command
     
