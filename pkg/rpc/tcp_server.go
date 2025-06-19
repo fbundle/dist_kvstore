@@ -36,7 +36,7 @@ func getKey() crypt.Key {
 func TCPTransport(addr string) TransportFunc {
 	key := getKey()
 
-	return func(input []byte) (output []byte, err error) {
+	return func(b []byte) ([]byte, error) {
 
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
@@ -46,28 +46,37 @@ func TCPTransport(addr string) TransportFunc {
 
 		err = conn.SetDeadline(time.Now().Add(TCP_TIMEOUT))
 		if err != nil {
-			return
-		}
-
-		// encrypt before send
-		input, err = key.Encrypt(input)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		conn.Write(input)
-		conn.Write([]byte("\n")) // '\n' notifies end of input
-		output, err = io.ReadAll(conn)
-
-		// decrypt after receive
-		output, err = key.Decrypt(output)
-		if err != nil {
-			fmt.Println(err)
 			return nil, err
 		}
 
-		return output, err
+		// encrypt before send
+		{
+			b_old := b
+			b, err = key.Encrypt(b_old)
+			if err != nil {
+				fmt.Println(b_old, err)
+				return nil, err
+			}
+		}
+
+		conn.Write(b)
+		conn.Write([]byte("\n")) // '\n' notifies end of input
+		b, err = io.ReadAll(conn)
+		if err != nil {
+			return nil, err
+		}
+
+		// decrypt after receive
+		{
+			b_old := b
+			b, err = key.Decrypt(b_old)
+			if err != nil {
+				fmt.Println(b_old, err)
+				return nil, err
+			}
+		}
+
+		return b, err
 	}
 }
 
@@ -120,10 +129,13 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 	b := []byte(msg)
 
 	// decrypt after receive
-	b, err = s.key.Decrypt(b)
-	if err != nil {
-		fmt.Println(err)
-		return
+	{
+		b_old := b
+		b, err = s.key.Decrypt(b_old)
+		if err != nil {
+			fmt.Println(b_old, err)
+			return
+		}
 	}
 
 	{
@@ -137,10 +149,13 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 	}
 
 	// encrypt before send
-	b, err = s.key.Encrypt(b)
-	if err != nil {
-		fmt.Println(err)
-		return
+	{
+		b_old := b
+		b, err = s.key.Encrypt(b_old)
+		if err != nil {
+			fmt.Println(b_old, err)
+			return
+		}
 	}
 
 	_, err = conn.Write(b)
