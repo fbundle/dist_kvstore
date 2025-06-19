@@ -5,12 +5,16 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"io"
 )
 
-func NewKey(s string) Key {
+type Crypt interface {
+	Encrypt(plaintext []byte) (ciphertext []byte, err error)
+	Decrypt(ciphertext []byte) (plaintext []byte, err error)
+}
+
+func NewCrypt(s string) Crypt {
 	if len(s) == 0 {
 		fmt.Println("WARNING: no key is used")
 		return key(nil)
@@ -19,49 +23,7 @@ func NewKey(s string) Key {
 	return key(hash[:])
 }
 
-type Key interface {
-	Encrypt(plaintext []byte) (ciphertext []byte, err error)
-	Decrypt(ciphertext []byte) (plaintext []byte, err error)
-	EncryptToWriter(plaintext []byte, writer io.Writer) (err error)
-	DecryptFromReader(reader io.Reader) (plaintext []byte, err error)
-}
-
 type key []byte
-
-func (k key) EncryptToWriter(plaintext []byte, writer io.Writer) (err error) {
-	ciphertext, err := k.Encrypt(plaintext)
-	if err != nil {
-		return err
-	}
-	n := uint64(len(ciphertext))
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, n)
-
-	_, err = writer.Write(append(b, ciphertext...))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (k key) DecryptFromReader(reader io.Reader) (plaintext []byte, err error) {
-	b := make([]byte, 8)
-	_, err = reader.Read(b)
-	if err != nil {
-		return nil, err
-	}
-	n := binary.LittleEndian.Uint64(b)
-	ciphertext := make([]byte, n)
-	_, err = reader.Read(ciphertext)
-	if err != nil {
-		return nil, err
-	}
-	plaintext, err = k.Decrypt(ciphertext)
-	if err != nil {
-		return nil, err
-	}
-	return plaintext, nil
-}
 
 func (k key) Encrypt(plaintext []byte) (ciphertext []byte, err error) {
 	if len(k) == 0 {

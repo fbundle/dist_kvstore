@@ -22,9 +22,9 @@ type TCPServer interface {
 	Close() error
 }
 
-func getKey() crypt.Key {
+func getKey() crypt.CryptStream {
 	keyStr := os.Getenv(AES_KEY_ENV)
-	key := crypt.NewKey(keyStr)
+	key := crypt.NewStream(crypt.NewCrypt(keyStr))
 	return key
 }
 
@@ -66,7 +66,7 @@ type tcpServer struct {
 	mu         sync.Mutex
 	dispatcher Dispatcher
 	listener   net.Listener
-	key        crypt.Key
+	key        crypt.CryptStream
 }
 
 func NewTCPServer(bindAddr string) (TCPServer, error) {
