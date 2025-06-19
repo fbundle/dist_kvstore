@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-APP_NAME=$1
-HOST_LIST=$2
-PRIVATE_KEY=$3
+APPNAME=$1
+HOSTLIST=$2
+PRIVATEKEY=$3
 
-python $APPNAME $HOSTLIST $PRIVATEKEY
+set -x
+
+mkdir -p tmp
+python $APPNAME/generate_config.py $APPNAME $HOSTLIST $PRIVATEKEY > tmp/config.json
