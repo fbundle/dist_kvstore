@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-set -x
-
-TMUX_SESSION=$1
-tmux has-session -t $TMUX_SESSION 2>/dev/null && tmux kill-session -t $TMUX_SESSION

@@ -60,7 +60,7 @@ if __name__ == "__main__":
         for i, addr in enumerate(addr_list):
             node_command = ""
             node_command += f"tmux has-session -t {TMUX_SESSION} 2>/dev/null && tmux kill-session -t {TMUX_SESSION}"
-            command = f"ssh {addr} \'bash -lc \"{node_command}\"\'"
+            command = f"ssh {addr} '{node_command}'"
             yield command
 
 
