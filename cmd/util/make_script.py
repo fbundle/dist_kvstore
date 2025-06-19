@@ -8,7 +8,7 @@ TMP_DIR = "tmp"
 CONFIG_PATH = f"{TMP_DIR}/config.json"
 RUN_PATH = f"{TMP_DIR}/run_all.sh"
 STOP_PATH = f"{TMP_DIR}/stop_all.sh"
-GO_PATH = "go/bin/go"
+GO_PATH = "golang/go/bin/go"
 TMUX_SESSION = "kvstore"
 AES_KEY = "AES_KEY"
 
