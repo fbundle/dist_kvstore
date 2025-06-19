@@ -1,5 +1,5 @@
 below is an implementation of paxos algorithm
-./pkg/kvstore/store.go
+./dist_kvstore/pkg/kvstore/store.go
 package kvstore
 
 type Txn[K comparable, V any] interface {
@@ -17,7 +17,7 @@ type MemStore[K comparable, V any] interface {
 	Store[K, V]
 	Keys() []K
 }
-./pkg/kvstore/barger_store.go
+./dist_kvstore/pkg/kvstore/barger_store.go
 package kvstore
 
 import (
@@ -107,7 +107,7 @@ func (b *badgerStore[K, V]) Close() {
 		panic(err)
 	}
 }
-./pkg/kvstore/mem_store.go
+./dist_kvstore/pkg/kvstore/mem_store.go
 package kvstore
 
 import "sync"
@@ -150,7 +150,7 @@ func (m *memStore[K, V]) Set(k K, v V) {
 func (m *memStore[K, V]) Del(k K) {
 	delete(m.store, k)
 }
-./pkg/rpc/dispatcher.go
+./dist_kvstore/pkg/rpc/dispatcher.go
 package rpc
 
 import (
@@ -225,7 +225,7 @@ func (d *dispatcher) Handle(input []byte) (output []byte, err error) {
 	}
 	return output, nil
 }
-./pkg/rpc/rpc.go
+./dist_kvstore/pkg/rpc/rpc.go
 package rpc
 
 import (
@@ -263,7 +263,7 @@ func RPC[Req any, Res any](transport TransportFunc, name string, req *Req) (res 
 	}
 	return res, nil
 }
-./pkg/rpc/tcp_server.go
+./dist_kvstore/pkg/rpc/tcp_server.go
 package rpc
 
 import (
@@ -404,7 +404,7 @@ func (s *tcpServer) ListenAndServe() error {
 		go s.handleConn(conn)
 	}
 }
-./pkg/dist_kvstore/util.go
+./dist_kvstore/pkg/dist_kvstore/util.go
 package dist_kvstore
 
 import "fmt"
@@ -423,7 +423,7 @@ func combineErrors(errs ...error) error {
 	}
 	return fmt.Errorf("%v", errorList)
 }
-./pkg/dist_kvstore/state_machine.go
+./dist_kvstore/pkg/dist_kvstore/state_machine.go
 package dist_kvstore
 
 import (
@@ -492,7 +492,7 @@ func (sm *stateMachine) Apply(logId paxos.LogId, cmd Cmd) {
 		return nil
 	})
 }
-./pkg/dist_kvstore/http.go
+./dist_kvstore/pkg/dist_kvstore/http.go
 package dist_kvstore
 
 import (
@@ -568,7 +568,7 @@ func HttpHandle(ds Store) http.HandlerFunc {
 
 	}
 }
-./pkg/dist_kvstore/kvstore.go
+./dist_kvstore/pkg/dist_kvstore/kvstore.go
 package dist_kvstore
 
 import (
@@ -751,7 +751,7 @@ func (ds *store) Get(key string) Entry {
 func (ds *store) Keys() []string {
 	return ds.memStore.Keys()
 }
-./pkg/paxos/message.go
+./dist_kvstore/pkg/paxos/message.go
 package paxos
 
 type Request interface {
@@ -796,7 +796,7 @@ type PollResponse[T any] struct {
 	Proposal Proposal `json:"proposal"`
 	Value    *T       `json:"value"`
 }
-./pkg/paxos/acceptor.go
+./dist_kvstore/pkg/paxos/acceptor.go
 package paxos
 
 import (
@@ -913,7 +913,7 @@ func (a *acceptor[T]) HandleRPC(r Request) Response {
 		return nil
 	}
 }
-./pkg/paxos/simple_acceptor.go
+./dist_kvstore/pkg/paxos/simple_acceptor.go
 package paxos
 
 import (
@@ -1004,7 +1004,7 @@ func (a *simpleAcceptor[T]) accept(logId LogId, proposal Proposal, value T) (Pro
 	promise, ok := r[0].(Promise[T]), r[1].(bool)
 	return promise, ok
 }
-./pkg/paxos/proposer.go
+./dist_kvstore/pkg/paxos/proposer.go
 package paxos
 
 import (
@@ -1178,7 +1178,7 @@ func LogCompact[T any](rpcList []RPC) {
 	 */
 	// compressLog[T any](ts ...T) T // type signature for log compression where T is type of value
 }
-./pkg/crypt/crypt.go
+./dist_kvstore/pkg/crypt/crypt.go
 package crypt
 
 import (
@@ -1260,7 +1260,7 @@ func (k key) Decrypt(ciphertext []byte) (plaintext []byte, err error) {
 
 	return plaintext, nil
 }
-./pkg/crypt/crypt_stream.go
+./dist_kvstore/pkg/crypt/crypt_stream.go
 package crypt
 
 import (
