@@ -15,8 +15,14 @@ AES_KEY = "AES_KEY"
 if __name__ == "__main__":
     # aes_key = "this is an aes key"
     # addr_list_str = "192.168.1.100,192.168.1.101,192.168.1.102"
-    aes_key = sys.argv[1]
-    addr_list_str = sys.argv[2]
+    
+
+    if len(sys.argv) >= 3:
+        addr_list_str = sys.argv[1]
+        aes_key = sys.argv[2]
+    else:
+        addr_list_str = sys.argv[1]
+        aes_key = ""
 
     addr_list = addr_list_str.split(",")
     cwd = os.getcwd()
