@@ -12,7 +12,7 @@ import (
 
 const (
 	TCP_TIMEOUT = 10 * time.Second
-	AES_KEY     = "AES_KEY"
+	AES_KEY_ENV = "AES_KEY"
 )
 
 type TCPServer interface {
@@ -23,7 +23,7 @@ type TCPServer interface {
 }
 
 func getKey() crypt.Key {
-	keyStr := os.Getenv(AES_KEY)
+	keyStr := os.Getenv(AES_KEY_ENV)
 	key := crypt.NewKey(keyStr)
 	return key
 }
