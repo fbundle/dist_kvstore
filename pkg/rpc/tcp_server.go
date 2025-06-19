@@ -27,7 +27,6 @@ func getKey() crypt.Key {
 	if len(keyStr) == 0 {
 		panic("no key found")
 	}
-	fmt.Println("loaded key", keyStr)
 	key := crypt.NewKey(keyStr)
 	return key
 }
