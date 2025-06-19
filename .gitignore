@@ -35,4 +35,3 @@ go.work.sum
 data
 tmp
 *.log
-golang
