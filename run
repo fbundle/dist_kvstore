@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-bind_addr=$1
-
