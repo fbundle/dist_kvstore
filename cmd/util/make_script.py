@@ -10,6 +10,7 @@ GO_PATH = "/home/khanh/ws/miniforge3/envs/test/go/bin/go"
 TMUX_SESSION = "kvstore"
 
 if __name__ == "__main__":
+    addr_list_str = "192.168.1.100,192.168.1.101,192.168.1.102"
     addr_list_str = sys.argv[1]
     addr_list = addr_list_str.split(",")
     cwd = os.getcwd()
