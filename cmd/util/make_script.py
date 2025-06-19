@@ -33,7 +33,7 @@ if __name__ == "__main__":
         # copy code
         for addr in addr_list:
             target = os.path.dirname(cwd)
-            command = f"rsync -avh --progress --exclude \"data\" {cwd} {addr}:{target}/ &"
+            command = f"rsync -avh --progress --delete --exclude \"data\" {cwd} {addr}:{target}/ &"
             yield command
         
         yield "wait"
@@ -59,8 +59,6 @@ if __name__ == "__main__":
         shutil.rmtree(TMP_DIR)
     
     os.makedirs(TMP_DIR)
-    # copy go binary
-    shutil.copy(GOBIN, TMP_DIR)
 
     # write config
     with open(CONFIG_PATH, "w") as f:
