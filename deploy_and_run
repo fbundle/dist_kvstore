@@ -22,6 +22,6 @@ ssh $HOST << EOF
     export GOROOT="$TARGET/$APPNAME/go"
     cd "$APPNAME"
     go build -o app
-    ./app
+    ./app |& tee "$TARGET/$APPNAME/run.log"
 EOF
 
