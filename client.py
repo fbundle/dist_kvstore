@@ -72,6 +72,7 @@ class KVStoreDict:
         return dict(self.items())
 
     def __repr__(self) -> str:
-        return repr(self.__dict__())
+        key_str = ",".join(self.keys()[:5])
+        return f"KVStoreDict(keys=[{key_str}...])"
 
 kv = KVStoreDict()
