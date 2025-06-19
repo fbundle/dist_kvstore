@@ -7,6 +7,7 @@ import json
 TMP_DIR = "tmp"
 CONFIG_PATH = f"{TMP_DIR}/config.json"
 RUN_PATH = f"{TMP_DIR}/run_all.sh"
+STOP_PATH = f"{TMP_DIR}/stop_all.sh"
 GO_PATH = "/home/khanh/ws/miniforge3/envs/test/go/bin/go"
 TMUX_SESSION = "kvstore"
 AES_KEY = "AES_KEY"
@@ -45,6 +46,13 @@ if __name__ == "__main__":
             node_command += f"tmux new-session -s {TMUX_SESSION} -d \\\"cd {cwd}; {AES_KEY}=\"{aes_key}\" {GO_PATH} run main.go {CONFIG_PATH} {i} |& tee run.log\\\""
             command = f"ssh {addr} \'bash -lc \"{node_command}\"\'"
             yield command
+    
+    def make_stop_command_list() -> Iterator[str]:
+        for i, addr in enumerate(addr_list):
+            node_command = ""
+            node_command += f"tmux has-session -t {TMUX_SESSION} 2>/dev/null && tmux kill-session -t {TMUX_SESSION}"
+            command = f"ssh {addr} \'bash -lc \"{node_command}\"\'"
+            yield command
 
 
     if os.path.exists(TMP_DIR):
@@ -58,5 +66,9 @@ if __name__ == "__main__":
     # generate command
     with open(RUN_PATH, "w") as f:
         for line in make_command_list():
+            f.write(line + "\n")
+    
+    with open(STOP_PATH, "w") as f:
+        for line in make_stop_command_list():
             f.write(line + "\n")
     
