@@ -1,2 +1,0 @@
-below is an implementation of paxos algorithm
-do you have any comment on this?
