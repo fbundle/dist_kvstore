@@ -1,7 +1,0 @@
-#/!usr/bin/env bash
-
-echo "below is an implementation of paxos algorithm"
-
-find ./dist_kvstore/pkg -name "*.go" -type f -print -exec cat {} \;
-
-echo "do you have any comment on this?"
