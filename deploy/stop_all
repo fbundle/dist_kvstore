@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-addr_list_str=$1
-python deploy/make_script.py $addr_list_str || exit 1;
-
-bash tmp/stop_all.sh  || exit 1;
