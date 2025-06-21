@@ -1,0 +1,34 @@
+{
+  "env": {
+    "AES_KEY": "thiskhanhisprivatemykey",
+    "app_name": "dist_kvstore_app",
+    "host_config_list": [
+      {
+        "hostname": "100.69.15.9",
+        "user": "khanh",
+        "exec": "./run_darwin_arm64",
+        "tmux_bin": "/opt/homebrew/bin/tmux",
+        "deploy_rootdir": "/tmp"
+      },
+      {
+        "hostname": "100.93.62.117",
+        "user": "khanh",
+        "exec": "./run_linux_amd64",
+        "tmux_bin": "/usr/bin/tmux",
+        "deploy_rootdir": "/tmp"
+      }
+    ],
+    "app_config_list": [
+      {
+        "badger": "/Users/khanh/data/acceptor_100_69_15_9",
+        "rpc": "100.69.15.9:4001",
+        "store": "localhost:4000"
+      },
+      {
+        "badger": "/home/khanh/data/acceptor_100_93_62_117",
+        "rpc": "100.93.62.117:4001",
+        "store": "localhost:4000"
+      }
+    ]
+  }
+}

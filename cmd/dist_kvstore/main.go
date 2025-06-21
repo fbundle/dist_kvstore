@@ -11,19 +11,19 @@ import (
 	"github.com/khanh101/paxos/pkg/dist_kvstore"
 )
 
-type Config struct {
+type HostConfig struct {
 	Badger string `json:"badger"`
 	RPC    string `json:"rpc"`
 	Store  string `json:"store"`
 }
-type ConfigList []Config
+type Config []HostConfig
 
 func main() {
 	b, err := os.ReadFile(os.Args[1])
 	if err != nil {
 		panic(err)
 	}
-	var cl ConfigList
+	var cl Config
 	err = json.Unmarshal(b, &cl)
 	if err != nil {
 		panic(err)
