@@ -7,4 +7,4 @@ GOOS=linux GOARCH=amd64 go build -o ./dist_kvstore_app/run_linux_amd64 cmd/dist_
 wait
 
 # fire
-./fire
+./fire run

@@ -39,3 +39,4 @@ chat.txt
 *.log
 fire.json
 dist_kvstore_app
+*.pyc
