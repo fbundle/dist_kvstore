@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import shutil
 import sys
 
-import pydantic
-
-
-class HostConfig(pydantic.BaseModel):
+@dataclasses.dataclass
+class HostConfig:
     host: str
     user: str
     exec: str
@@ -27,19 +26,20 @@ class HostConfig(pydantic.BaseModel):
         return self
 
 
-class FireConfig(pydantic.BaseModel):
+@dataclasses.dataclass
+class FireConfig:
     env: dict[str, str]
     app_path: str
-    host_config_list: list[HostConfig]
+    host_config_list: list[dict | HostConfig]
     app_config_list: list
     # optional params
     app_name: str | None = None
 
     def post_init(self) -> FireConfig:
+        for i, host_config in enumerate(self.host_config_list):
+            self.host_config_list[i] = HostConfig(**host_config).post_init(self)
         if self.app_name is None:
             self.app_name = os.path.basename(self.app_path)
-        for host_config in self.host_config_list:
-            host_config.post_init(self)
         return self
 
 
@@ -127,8 +127,6 @@ __version__ = "0.1.0"
 if __name__ == "__main__":
     if not get_python_version().startswith("3.12."):
         print("WARNING: This script is only tested with python 3.12.")
-    if not pydantic.__version__.startswith("2.11."):
-        print("WARNING: This script is only tested with pydantic 2.11.")
 
     with open("fire.json", "r") as f:
         config = FireConfig(**json.loads(f.read()))
