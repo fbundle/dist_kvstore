@@ -137,5 +137,5 @@ if __name__ == "__main__":
 
     if len(sys.argv) >= 2:
         import subprocess
-
-        subprocess.run([f"./tmp/{sys.argv[1]}"], check=True)
+        command = sys.argv[1]
+        subprocess.run([f"./tmp/{command}"], check=True)
