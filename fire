@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 from __future__ import annotations
-import importlib.util
+
 import json
 import os
 import shutil
 import sys
-import types
 
 import pydantic
+
 
 class HostConfig(pydantic.BaseModel):
     host: str
@@ -26,6 +26,7 @@ class HostConfig(pydantic.BaseModel):
             self.tmux_session = f"fire_{fire.app_name}_{self.host}_{self.user}".replace(".", "_")
         return self
 
+
 class FireConfig(pydantic.BaseModel):
     env: dict[str, str]
     app_path: str
@@ -33,12 +34,14 @@ class FireConfig(pydantic.BaseModel):
     app_config_list: list
     # optional params
     app_name: str | None = None
+
     def post_init(self) -> FireConfig:
         if self.app_name is None:
             self.app_name = os.path.basename(self.app_path)
         for host_config in self.host_config_list:
             host_config.post_init(self)
         return self
+
 
 run_script_template = """
 rsync -avh --delete --progress tmp/{app_name}.json {user}@{host}:{deploy_dir}/
@@ -50,6 +53,7 @@ ssh {user}@{host} << EOF
     {tmux_bin} new-session -s {tmux_session} -d "export {env_str}; {exec} {deploy_dir}/{app_name}.json {i} |& tee {deploy_dir}/run.log"
 EOF
 """
+
 
 def make_run_script(fire: FireConfig) -> str:
     script = "#!/usr/bin/env bash\nset -xe\n"
@@ -70,6 +74,7 @@ def make_run_script(fire: FireConfig) -> str:
 
     return script
 
+
 clean_script_template = """
 ssh {user}@{host} << EOF
     set -xe
@@ -77,6 +82,8 @@ ssh {user}@{host} << EOF
     rm -rf {deploy_dir}
 EOF
 """
+
+
 def make_clean_script(fire: FireConfig) -> str:
     script = "#!/usr/bin/env bash\nset -xe\n"
     for i, host_config in enumerate(fire.host_config_list):
@@ -89,6 +96,7 @@ def make_clean_script(fire: FireConfig) -> str:
         )
 
     return script
+
 
 def main(fire: FireConfig):
     if os.path.exists("tmp"):
@@ -109,8 +117,10 @@ def main(fire: FireConfig):
         f.write(script)
     os.chmod("tmp/clean", 0o700)
 
+
 def get_python_version():
     return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+
 
 __version__ = "0.1.0"
 
@@ -125,11 +135,7 @@ if __name__ == "__main__":
 
     main(config.post_init())
 
-
-
     if len(sys.argv) >= 2:
         import subprocess
+
         subprocess.run([f"./tmp/{sys.argv[1]}"], check=True)
-
-
-
