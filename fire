@@ -36,10 +36,11 @@ class FireConfig:
     app_name: str | None = None
 
     def post_init(self) -> FireConfig:
-        for i, host_config in enumerate(self.host_config_list):
-            self.host_config_list[i] = HostConfig(**host_config).post_init(self)
         if self.app_name is None:
             self.app_name = os.path.basename(self.app_path)
+        for i, host_config in enumerate(self.host_config_list):
+            if isinstance(host_config, dict):
+                self.host_config_list[i] = HostConfig(**host_config).post_init(self)
         return self
 
 
@@ -129,9 +130,9 @@ if __name__ == "__main__":
         print("WARNING: This script is only tested with python 3.12.")
 
     with open("fire.json", "r") as f:
-        config = FireConfig(**json.loads(f.read()))
+        config = FireConfig(**json.loads(f.read())).post_init()
 
-    main(config.post_init())
+    main(config)
 
     if len(sys.argv) >= 2:
         import subprocess
