@@ -1,0 +1,129 @@
+#!/usr/bin/env python
+from __future__ import annotations
+import importlib.util
+import json
+import os
+import shutil
+import sys
+import types
+
+import pydantic
+
+class HostConfig(pydantic.BaseModel):
+    hostname: str
+    user: str
+    exec: str
+    tmux_bin: str
+    deploy_rootdir: str
+    deploy_dir: str | None = None
+    tmux_session: str | None = None
+
+    def post_init(self, fire: FireConfig) -> HostConfig:
+        if self.deploy_dir is None:
+            self.deploy_dir = f"{self.deploy_rootdir}/fire_{fire.app_name}_{self.hostname}_{self.user}"
+        if self.tmux_session is None:
+            self.tmux_session = f"fire_{fire.app_name}_{self.hostname}_{self.user}".replace(".", "_")
+        return self
+
+class FireConfig(pydantic.BaseModel):
+    env: dict[str, str]
+    app_name: str
+    host_config_list: list[HostConfig]
+    app_config_list: list | None = None
+    def post_init(self) -> FireConfig:
+        for host_config in self.host_config_list:
+            host_config.post_init(self)
+        return self
+
+run_script_template = """
+rsync -avh --delete --progress tmp/{app_name}.json {user}@{host}:{deploy_dir}/
+rsync -avh --delete --progress {app_name} {user}@{host}:{deploy_dir}/
+ssh {user}@{host} << EOF
+    set -xe
+    {tmux_bin} has-session -t {tmux_session} 2> /dev/null && {tmux_bin} kill-session -t {tmux_session}
+    cd {deploy_dir}/{app_name}
+    {tmux_bin} new-session -s {tmux_session} -d "export {env_str}; {exec} {deploy_dir}/{app_name}.json {i} |& tee {deploy_dir}/run.log"
+EOF
+"""
+
+def make_run_script(fire: FireConfig) -> str:
+    script = "#!/usr/bin/env bash\nset -xe\n"
+    for i, host_config in enumerate(fire.host_config_list):
+        env_str = " ".join(map(lambda kv: f"{kv[0]}={kv[1]}", fire.env.items()))
+        script += run_script_template.format(
+            app_name=fire.app_name,
+            host=host_config.hostname,
+            user=host_config.user,
+            deploy_dir=host_config.deploy_dir,
+            tmux_bin=host_config.tmux_bin,
+            tmux_session=host_config.tmux_session,
+            exec=host_config.exec,
+            env_str=env_str,
+            i=i,
+        )
+
+    return script
+
+clean_script_template = """
+ssh {user}@{host} << EOF
+    set -xe
+    {tmux_bin} has-session -t {tmux_session} 2> /dev/null && {tmux_bin} kill-session -t {tmux_session}
+    rm -rf {deploy_dir}
+EOF
+"""
+def make_clean_script(fire: FireConfig) -> str:
+    script = "#!/usr/bin/env bash\nset -xe\n"
+    for i, host_config in enumerate(fire.host_config_list):
+        script += clean_script_template.format(
+            host=host_config.hostname,
+            user=host_config.user,
+            deploy_dir=host_config.deploy_dir,
+            tmux_bin=host_config.tmux_bin,
+            tmux_session=host_config.tmux_session,
+        )
+
+    return script
+
+def main(fire: FireConfig):
+    if os.path.exists("tmp"):
+        shutil.rmtree("tmp")
+    os.makedirs("tmp")
+
+    if fire.app_config_list is not None:
+        with open(f"tmp/{fire.app_name}.json", "w") as f:
+            f.write(json.dumps(fire.app_config_list, indent=2))
+
+    with open("tmp/run", "w") as f:
+        script = make_run_script(fire=fire)
+        f.write(script)
+    os.chmod("tmp/run", 0o700)
+
+    with open("tmp/clean", "w") as f:
+        script = make_clean_script(fire=fire)
+        f.write(script)
+    os.chmod("tmp/clean", 0o700)
+
+def get_python_version():
+    return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+
+__version__ = "0.1.0"
+
+if __name__ == "__main__":
+    if not get_python_version().startswith("3.12."):
+        print("WARNING: This script is only tested with python 3.12.")
+    if not pydantic.__version__.startswith("2.11."):
+        print("WARNING: This script is only tested with pydantic 2.11.")
+
+    with open("fire.json", "r") as f:
+        config = FireConfig(**json.loads(f.read()))
+
+    main(config.post_init())
+
+
+
+    if len(sys.argv) >= 2:
+        import subprocess
+        subprocess.run([f"./tmp/{sys.argv[1]}"], check=True)
+
+
+
