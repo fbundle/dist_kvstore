@@ -38,5 +38,5 @@ bin
 chat.txt
 *.log
 fire.json
-dist_kvstore_app
+bin
 *.pyc

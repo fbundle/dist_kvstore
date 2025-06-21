@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-mkdir -p dist_kvstore_app
+mkdir -p bin/dist_kvstore
 
 # build
-GOOS=darwin GOARCH=arm64 go build -o ./dist_kvstore_app/run_darwin_arm64 cmd/dist_kvstore/main.go &
-GOOS=linux GOARCH=amd64 go build -o ./dist_kvstore_app/run_linux_amd64 cmd/dist_kvstore/main.go &
+GOOS=darwin GOARCH=arm64 go build -o bin/dist_kvstore/run_darwin_arm64 cmd/dist_kvstore/main.go &
+GOOS=linux GOARCH=amd64 go build -o bin/dist_kvstore/run_linux_amd64 cmd/dist_kvstore/main.go &
 wait
 
 # fire
-./fire run
+./fire

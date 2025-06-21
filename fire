@@ -10,34 +10,39 @@ import types
 import pydantic
 
 class HostConfig(pydantic.BaseModel):
-    hostname: str
+    host: str
     user: str
     exec: str
     tmux_bin: str
     deploy_rootdir: str
+    # optional params
     deploy_dir: str | None = None
     tmux_session: str | None = None
 
     def post_init(self, fire: FireConfig) -> HostConfig:
         if self.deploy_dir is None:
-            self.deploy_dir = f"{self.deploy_rootdir}/fire_{fire.app_name}_{self.hostname}_{self.user}"
+            self.deploy_dir = f"{self.deploy_rootdir}/fire_{fire.app_name}_{self.host}_{self.user}"
         if self.tmux_session is None:
-            self.tmux_session = f"fire_{fire.app_name}_{self.hostname}_{self.user}".replace(".", "_")
+            self.tmux_session = f"fire_{fire.app_name}_{self.host}_{self.user}".replace(".", "_")
         return self
 
 class FireConfig(pydantic.BaseModel):
     env: dict[str, str]
-    app_name: str
+    app_path: str
     host_config_list: list[HostConfig]
-    app_config_list: list | None = None
+    app_config_list: list
+    # optional params
+    app_name: str | None = None
     def post_init(self) -> FireConfig:
+        if self.app_name is None:
+            self.app_name = os.path.basename(self.app_path)
         for host_config in self.host_config_list:
             host_config.post_init(self)
         return self
 
 run_script_template = """
 rsync -avh --delete --progress tmp/{app_name}.json {user}@{host}:{deploy_dir}/
-rsync -avh --delete --progress {app_name} {user}@{host}:{deploy_dir}/
+rsync -avh --delete --progress {app_path} {user}@{host}:{deploy_dir}/
 ssh {user}@{host} << EOF
     set -xe
     {tmux_bin} has-session -t {tmux_session} 2> /dev/null && {tmux_bin} kill-session -t {tmux_session}
@@ -52,7 +57,8 @@ def make_run_script(fire: FireConfig) -> str:
         env_str = " ".join(map(lambda kv: f"{kv[0]}={kv[1]}", fire.env.items()))
         script += run_script_template.format(
             app_name=fire.app_name,
-            host=host_config.hostname,
+            app_path=fire.app_path,
+            host=host_config.host,
             user=host_config.user,
             deploy_dir=host_config.deploy_dir,
             tmux_bin=host_config.tmux_bin,
@@ -75,7 +81,7 @@ def make_clean_script(fire: FireConfig) -> str:
     script = "#!/usr/bin/env bash\nset -xe\n"
     for i, host_config in enumerate(fire.host_config_list):
         script += clean_script_template.format(
-            host=host_config.hostname,
+            host=host_config.host,
             user=host_config.user,
             deploy_dir=host_config.deploy_dir,
             tmux_bin=host_config.tmux_bin,
