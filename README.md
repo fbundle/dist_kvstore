@@ -29,15 +29,6 @@ curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "<value>", "ver": <v
 curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "", "ver": <ver>}'
 ```
 
-## RUN CLUSTER
-
-```bash
-# fire up cluster
-./run_all "<ip1>,<ip2>,<ip3>" "<private_key_for_rpc>"
-# stop running
-./stop_all "<ip1>,<ip2>,<ip3>" "<private_key_for_rpc>"
-```
-
 ## TODO 
 
 - implement log compaction (3/5 difficulty, 4/5 complexity)
