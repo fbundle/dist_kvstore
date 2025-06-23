@@ -14,13 +14,20 @@ T = TypeVar("T")
 def serializable_dataclass(cls: Type[T]) -> Type[T]:
     cls = dataclasses.dataclass(cls)
 
+    def model_load(data: dict) -> T:
+        return cls(**data)
+    def model_dump(self: T) -> dict:
+        return dataclasses.asdict(self)
+
     def model_load_json(json_str: str) -> T:
         data = json.loads(json_str)
-        return cls(**data)
+        return model_load(data)
 
     def model_dump_json(self: T) -> str:
-        return json.dumps(dataclasses.asdict(self))
+        return json.dumps(model_dump(self))
 
+    setattr(cls, "model_load", staticmethod(model_load))
+    setattr(cls, "model_dump", model_dump)
     setattr(cls, "model_load_json", staticmethod(model_load_json))
     setattr(cls, "model_dump_json", model_dump_json)
 
