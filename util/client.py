@@ -14,14 +14,14 @@ T = TypeVar("T")
 def serializable_dataclass(cls: Type[T]) -> Type[T]:
     cls = dataclasses.dataclass(cls)
 
-    def model_validate_json(json_str: str) -> T:
+    def model_load_json(json_str: str) -> T:
         data = json.loads(json_str)
         return cls(**data)
 
     def model_dump_json(self: T) -> str:
         return json.dumps(dataclasses.asdict(self))
 
-    setattr(cls, "model_validate_json", staticmethod(model_validate_json))
+    setattr(cls, "model_load_json", staticmethod(model_load_json))
     setattr(cls, "model_dump_json", model_dump_json)
 
     return cls
@@ -42,7 +42,7 @@ class KVStore:
         self.addr = addr
 
     def get(self, key: str) -> Cmd:
-        return Cmd.model_validate_json(make_request("GET", self.addr, f"kvstore/{key}").text)
+        return Cmd.model_load_json(make_request("GET", self.addr, f"kvstore/{key}").text)
 
     def set(self, key: str, val: str, ver: int):
         make_request("PUT", self.addr, f"kvstore/{key}", data=json.dumps({"val": val, "ver": ver}))
