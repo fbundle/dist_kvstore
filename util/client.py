@@ -1,9 +1,11 @@
+from __future__ import annotations
 from typing import Iterator, Any
 import json
 import time
 import random
+import json
+import dataclasses
 
-import pydantic
 import requests
 
 
@@ -12,10 +14,20 @@ def make_request(method: str, addr: str, path: str, **kwargs) -> requests.Respon
     res.raise_for_status()
     return res
 
-class Cmd(pydantic.BaseModel):
+@dataclasses.dataclass
+class Cmd:
     key: str
     val: str
     ver: int
+    
+    @staticmethod
+    def model_validate_json(json_str: str) -> Cmd:
+        o = json.loads(json_str)
+        return Cmd(**o)
+    
+    def model_dump_json(self) -> str:
+        return json.dumps(dataclasses.asdict(self))
+
 
 class KVStore:
     def __init__(self, addr: str = "http://localhost:4000"):
