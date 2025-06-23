@@ -1,33 +1,41 @@
 from __future__ import annotations
-from typing import Iterator, Any
-import json
-import time
-import random
-import json
+
 import dataclasses
+import json
+import random
+import time
+from typing import Iterator
+from typing import Type, TypeVar, Any
 
 import requests
 
+T = TypeVar("T")
+
+def serializable_dataclass(cls: Type[T]) -> Type[T]:
+    cls = dataclasses.dataclass(cls)
+
+    def model_validate_json(json_str: str) -> T:
+        data = json.loads(json_str)
+        return cls(**data)
+
+    def model_dump_json(self: T) -> str:
+        return json.dumps(dataclasses.asdict(self))
+
+    setattr(cls, "model_validate_json", staticmethod(model_validate_json))
+    setattr(cls, "model_dump_json", model_dump_json)
+
+    return cls
 
 def make_request(method: str, addr: str, path: str, **kwargs) -> requests.Response:
     res = requests.request(method, f"{addr}/{path}", **kwargs)
     res.raise_for_status()
     return res
 
-@dataclasses.dataclass
+@serializable_dataclass
 class Cmd:
     key: str
     val: str
     ver: int
-    
-    @staticmethod
-    def model_validate_json(json_str: str) -> Cmd:
-        o = json.loads(json_str)
-        return Cmd(**o)
-    
-    def model_dump_json(self) -> str:
-        return json.dumps(dataclasses.asdict(self))
-
 
 class KVStore:
     def __init__(self, addr: str = "http://localhost:4000"):
