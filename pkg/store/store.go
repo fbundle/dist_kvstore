@@ -69,8 +69,8 @@ func NewStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
 	}
 	ss := local_store.NewBadgerStringStore(db).Append("log")
 	acceptor := paxos.NewAcceptor(local_store.MakeStoreFromStringStore[paxos.LogId, paxos.Promise[Cmd]](ss))
-	stateMachine := newStateMachine()
-	acceptor.Subscribe(0, stateMachine.Apply)
+	memStore := newStateMachine()
+	acceptor.Subscribe(0, memStore.Apply)
 
 	server, err := rpc.NewTCPServer(bindAddr)
 	if err != nil {
@@ -119,7 +119,7 @@ func NewStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
 		id:           paxos.ProposerId(id),
 		peerAddrList: peerAddrList,
 		db:           db,
-		memStore:     stateMachine,
+		memStore:     memStore,
 		acceptor:     acceptor,
 		server:       server,
 		rpcList:      rpcList,
