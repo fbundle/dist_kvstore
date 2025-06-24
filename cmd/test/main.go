@@ -13,9 +13,7 @@ func testRPC() {
 		Values []int
 	}
 
-	type AddRes struct {
-		Sum int
-	}
+	type AddRes = int
 
 	type SubReq struct {
 		A int
@@ -33,9 +31,7 @@ func testRPC() {
 		for _, v := range req.Values {
 			sum += v
 		}
-		return &AddRes{
-			Sum: sum,
-		}
+		return &sum
 	}).Register("sub", func(req *SubReq) (res *SubRes) {
 		return &SubRes{
 			Diff: req.A - req.B,
@@ -52,7 +48,7 @@ func testRPC() {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(res)
+		fmt.Println(*res)
 	}
 	{
 		res, err := rpc.RPC[SubReq, SubRes](
@@ -134,7 +130,7 @@ func testRPCTCP() {
 }
 
 func testAES() {
-	key := crypt.NewKey([]byte("example key 1234")) // 16 bytes for AES-128, 24 for AES-192, 32 for AES-256
+	key := crypt.NewCrypt("example key 1234") // 16 bytes for AES-128, 24 for AES-192, 32 for AES-256
 	plaintext := []byte("Hello, AES encryption in Go!")
 
 	// Encrypt
@@ -153,5 +149,5 @@ func testAES() {
 }
 
 func main() {
-	testAES()
+	testRPC()
 }
