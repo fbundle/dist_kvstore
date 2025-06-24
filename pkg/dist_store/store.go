@@ -1,4 +1,4 @@
-package store
+package dist_store
 
 import (
 	"context"
@@ -18,7 +18,7 @@ const (
 	UPDATE_INTERVAL  = 100 * time.Millisecond
 )
 
-type Store interface {
+type DistStore interface {
 	Close() error
 	ListenAndServeRPC() error
 	Get(key string) Entry
@@ -61,7 +61,7 @@ func getDefaultEntry(txn local_store.Txn[string, Entry], key string) Entry {
 	return entry
 }
 
-func NewStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
+func NewStore(id int, badgerPath string, peerAddrList []string) (DistStore, error) {
 	bindAddr := peerAddrList[id]
 	db, err := badger.Open(badger.DefaultOptions(badgerPath))
 	if err != nil {

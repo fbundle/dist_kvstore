@@ -1,4 +1,4 @@
-package store
+package dist_store
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ type versionedValue struct {
 	Ver uint64 `json:"ver"`
 }
 
-func HttpHandle(ds Store) http.HandlerFunc {
+func HttpHandle(ds DistStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/local_store/") {
 			http.NotFound(w, r)

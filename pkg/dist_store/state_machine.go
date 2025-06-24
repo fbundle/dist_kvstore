@@ -1,4 +1,4 @@
-package store
+package dist_store
 
 import (
 	"github.com/google/uuid"

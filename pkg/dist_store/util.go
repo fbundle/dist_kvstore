@@ -1,4 +1,4 @@
-package store
+package dist_store
 
 import "fmt"
 
