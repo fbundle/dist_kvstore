@@ -27,6 +27,7 @@ type Txn[T any] interface {
 	Del(k LogId)
 }
 
+// Log - stable log
 type Log[T any] interface {
 	Update(update func(txn Txn[T]) any) any
 }
