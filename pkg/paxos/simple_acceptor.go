@@ -1,5 +1,7 @@
 package paxos
 
+import "github.com/khanh101/paxos/pkg/kvstore"
+
 // Proposal - roundId * 4294967296 + nodeId
 type Proposal uint64
 
@@ -21,22 +23,11 @@ func zero[T any]() T {
 	return v
 }
 
-type Txn[T any] interface {
-	Get(k LogId) (v Promise[T], ok bool)
-	Set(k LogId, v Promise[T])
-	Del(k LogId)
-}
-
-// Log - stable log
-type Log[T any] interface {
-	Update(update func(txn Txn[T]) any) any
-}
-
 type simpleAcceptor[T any] struct {
-	log Log[T]
+	log kvstore.Store[LogId, Promise[T]]
 }
 
-func getDefaultLogEntry[T any](txn Txn[T], logId LogId) (p Promise[T]) {
+func getDefaultLogEntry[T any](txn kvstore.Txn[LogId, Promise[T]], logId LogId) (p Promise[T]) {
 	v, ok := txn.Get(logId)
 	if !ok {
 		return Promise[T]{
@@ -48,14 +39,14 @@ func getDefaultLogEntry[T any](txn Txn[T], logId LogId) (p Promise[T]) {
 }
 
 func (a *simpleAcceptor[T]) get(logId LogId) (Proposal, *T) {
-	promise := a.log.Update(func(txn Txn[T]) any {
+	promise := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		return getDefaultLogEntry(txn, logId)
 	}).(Promise[T])
 	return promise.Proposal, promise.Value
 }
 
 func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
-	a.log.Update(func(txn Txn[T]) any {
+	a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		txn.Set(logId, Promise[T]{
 			Proposal: COMMITTED,
 			Value:    &v,
@@ -65,7 +56,7 @@ func (a *simpleAcceptor[T]) commit(logId LogId, v T) {
 }
 
 func (a *simpleAcceptor[T]) prepare(logId LogId, proposal Proposal) (Promise[T], bool) {
-	r := a.log.Update(func(txn Txn[T]) any {
+	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		p := getDefaultLogEntry(txn, logId)
 		if !(p.Proposal < proposal) {
 			return [2]any{p, false}
@@ -81,7 +72,7 @@ func (a *simpleAcceptor[T]) prepare(logId LogId, proposal Proposal) (Promise[T],
 }
 
 func (a *simpleAcceptor[T]) accept(logId LogId, proposal Proposal, value T) (Promise[T], bool) {
-	r := a.log.Update(func(txn Txn[T]) any {
+	r := a.log.Update(func(txn kvstore.Txn[LogId, Promise[T]]) any {
 		p := getDefaultLogEntry(txn, logId)
 		if !(p.Proposal <= proposal) {
 			return [2]any{p, false}
