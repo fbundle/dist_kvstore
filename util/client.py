@@ -49,13 +49,13 @@ class KVStore:
         self.addr = addr
 
     def get(self, key: str) -> Cmd:
-        return Cmd.model_load_json(make_request("GET", self.addr, f"kvstore/{key}").text)
+        return Cmd.model_load_json(make_request("GET", self.addr, f"local_store/{key}").text)
 
     def set(self, key: str, val: str, ver: int):
-        make_request("PUT", self.addr, f"kvstore/{key}", data=json.dumps({"val": val, "ver": ver}))
+        make_request("PUT", self.addr, f"local_store/{key}", data=json.dumps({"val": val, "ver": ver}))
 
     def keys(self) -> list[str]:
-        return json.loads(make_request("GET", self.addr, "kvstore/").text)
+        return json.loads(make_request("GET", self.addr, "local_store/").text)
 
 class KVStoreDict:
     def __init__(self, addr: str = "http://localhost:4000"):

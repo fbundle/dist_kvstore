@@ -13,9 +13,9 @@ paxos is easier to understand and prove unlike raft
 cluster is online if and only if a quorum is online
 
 ```bash
-go run main.go conf/kvstore.json 0
-go run main.go conf/kvstore.json 1
-go run main.go conf/kvstore.json 2
+go run main.go conf/local_store.json 0
+go run main.go conf/local_store.json 1
+go run main.go conf/local_store.json 2
 ```
 
 ```bash

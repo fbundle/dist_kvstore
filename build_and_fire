@@ -3,16 +3,16 @@ mkdir -p bin/dist_kvstore
 
 # build - go tool dist list: list all platforms
 ## linux_riscv64
-# GOOS=linux GOARCH=riscv64 go build -o bin/dist_kvstore/run_linux_riscv64 cmd/dist_kvstore/main.go &
+# GOOS=linux GOARCH=riscv64 go build -o bin/store/run_linux_riscv64 cmd/store/main.go &
 ## linux_arm64
-# GOOS=linux GOARCH=arm64 go build -o bin/dist_kvstore/run_linux_arm64 cmd/dist_kvstore/main.go &
+# GOOS=linux GOARCH=arm64 go build -o bin/store/run_linux_arm64 cmd/store/main.go &
 ## linux_amd64
 GOOS=linux GOARCH=amd64 go build -o bin/dist_kvstore/run_linux_amd64 cmd/dist_kvstore/main.go &
 ## darwin_arm64
 GOOS=darwin GOARCH=arm64 go build -o bin/dist_kvstore/run_darwin_arm64 cmd/dist_kvstore/main.go &
 
 ## wasi wasm -- TODO need to add local file access
-# GOOS=wasip1 GOARCH=wasm go build -o bin/dist_kvstore/run_wasip1_wasm cmd/dist_kvstore/main.go &
+# GOOS=wasip1 GOARCH=wasm go build -o bin/store/run_wasip1_wasm cmd/store/main.go &
 
 wait
 

@@ -1,4 +1,4 @@
-package kvstore
+package local_store
 
 type Txn[K comparable, V any] interface {
 	Get(k K) (v V, ok bool)

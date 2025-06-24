@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/khanh101/paxos/pkg/dist_kvstore"
+	"github.com/khanh101/paxos/pkg/store"
 )
 
 type HostConfig struct {
@@ -39,7 +39,7 @@ func main() {
 	for i, c := range cl {
 		peerAddrList[i] = c.RPC
 	}
-	ds, err := dist_kvstore.NewDistStore(id, badgerDBPath, peerAddrList)
+	ds, err := store.NewStore(id, badgerDBPath, peerAddrList)
 	if err != nil {
 		panic(err)
 	}
@@ -50,7 +50,7 @@ func main() {
 	// http server
 	hs := &http.Server{
 		Addr:    cl[id].Store,
-		Handler: dist_kvstore.HttpHandle(ds),
+		Handler: store.HttpHandle(ds),
 	}
 	fmt.Println("http server listening on", cl[id].Store)
 	err = hs.ListenAndServe()

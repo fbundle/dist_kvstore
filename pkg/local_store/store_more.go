@@ -1,4 +1,4 @@
-package kvstore
+package local_store
 
 import "encoding/json"
 

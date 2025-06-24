@@ -1,8 +1,8 @@
-package dist_kvstore
+package store
 
 import (
 	"github.com/google/uuid"
-	"github.com/khanh101/paxos/pkg/kvstore"
+	"github.com/khanh101/paxos/pkg/local_store"
 	"github.com/khanh101/paxos/pkg/paxos"
 )
 
@@ -29,29 +29,29 @@ func (cmd Cmd) Equal(other Cmd) bool {
 }
 
 type stateMachine struct {
-	store kvstore.MemStore[string, Entry]
+	store local_store.MemStore[string, Entry]
 }
 
 func newStateMachine() *stateMachine {
 	return &stateMachine{
-		store: kvstore.NewMemStore[string, Entry](),
+		store: local_store.NewMemStore[string, Entry](),
 	}
 }
 
 func (sm *stateMachine) Get(key string) Entry {
-	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+	return sm.store.Update(func(txn local_store.Txn[string, Entry]) any {
 		return getDefaultEntry(txn, key)
 	}).(Entry)
 }
 
 func (sm *stateMachine) Keys() []string {
-	return sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+	return sm.store.Update(func(txn local_store.Txn[string, Entry]) any {
 		return sm.store.Keys()
 	}).([]string)
 }
 
 func (sm *stateMachine) Apply(logId paxos.LogId, cmd Cmd) {
-	sm.store.Update(func(txn kvstore.Txn[string, Entry]) any {
+	sm.store.Update(func(txn local_store.Txn[string, Entry]) any {
 		for _, entry := range cmd.Entries {
 			oldEntry := getDefaultEntry(txn, entry.Key)
 			if entry.Ver <= oldEntry.Ver {

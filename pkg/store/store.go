@@ -1,4 +1,4 @@
-package dist_kvstore
+package store
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/khanh101/paxos/pkg/kvstore"
+	"github.com/khanh101/paxos/pkg/local_store"
 	"github.com/khanh101/paxos/pkg/paxos"
 	"github.com/khanh101/paxos/pkg/rpc"
 )
@@ -49,7 +49,7 @@ type store struct {
 	updateCancel context.CancelFunc
 }
 
-func getDefaultEntry(txn kvstore.Txn[string, Entry], key string) Entry {
+func getDefaultEntry(txn local_store.Txn[string, Entry], key string) Entry {
 	entry, ok := txn.Get(key)
 	if !ok {
 		return Entry{
@@ -61,16 +61,16 @@ func getDefaultEntry(txn kvstore.Txn[string, Entry], key string) Entry {
 	return entry
 }
 
-func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
+func NewStore(id int, badgerPath string, peerAddrList []string) (Store, error) {
 	bindAddr := peerAddrList[id]
 	db, err := badger.Open(badger.DefaultOptions(badgerPath))
 	if err != nil {
 		return nil, err
 	}
-	ss := kvstore.NewBadgerStringStore(db).Append("log")
-	acceptor := paxos.NewAcceptor(kvstore.MakeStoreFromStringStore[paxos.LogId, paxos.Promise[Cmd]](ss))
-	memStore := newStateMachine()
-	acceptor.Subscribe(0, memStore.Apply)
+	ss := local_store.NewBadgerStringStore(db).Append("log")
+	acceptor := paxos.NewAcceptor(local_store.MakeStoreFromStringStore[paxos.LogId, paxos.Promise[Cmd]](ss))
+	stateMachine := newStateMachine()
+	acceptor.Subscribe(0, stateMachine.Apply)
 
 	server, err := rpc.NewTCPServer(bindAddr)
 	if err != nil {
@@ -119,7 +119,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		id:           paxos.ProposerId(id),
 		peerAddrList: peerAddrList,
 		db:           db,
-		memStore:     memStore,
+		memStore:     stateMachine,
 		acceptor:     acceptor,
 		server:       server,
 		rpcList:      rpcList,

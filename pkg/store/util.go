@@ -1,4 +1,4 @@
-package dist_kvstore
+package store
 
 import "fmt"
 

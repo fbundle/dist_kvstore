@@ -1,4 +1,4 @@
-package dist_kvstore
+package store
 
 import (
 	"encoding/json"
@@ -14,13 +14,13 @@ type versionedValue struct {
 
 func HttpHandle(ds Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/kvstore/") {
+		if !strings.HasPrefix(r.URL.Path, "/local_store/") {
 			http.NotFound(w, r)
 			return
 		}
 		defer r.Body.Close()
 
-		key, _ := strings.CutPrefix(r.URL.Path, "/kvstore/")
+		key, _ := strings.CutPrefix(r.URL.Path, "/local_store/")
 		if len(key) == 0 {
 			b, err := json.Marshal(ds.Keys())
 			if err != nil {
