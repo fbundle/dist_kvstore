@@ -22,34 +22,40 @@ type badgerStringStore struct {
 	prefix string
 }
 
-func (b *badgerStringStore) Append(prefix string) StringStore {
+func (ss *badgerStringStore) Append(prefix string) StringStore {
 	if strings.Contains(prefix, "/") {
 		panic("prefix must not contain '/'")
 	}
 	return &badgerStringStore{
-		mu:     b.mu,
-		db:     b.db,
-		prefix: fmt.Sprintf("%s/%s", b.prefix, prefix),
+		mu:     ss.mu,
+		db:     ss.db,
+		prefix: fmt.Sprintf("%s/%s", ss.prefix, prefix),
 	}
 }
 
-func (b *badgerStringStore) Update(update func(txn Txn[string, string]) any) any {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+func (ss *badgerStringStore) Update(update func(txn Txn[string, string]) any) any {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
 	var out any
-	_ = b.db.Update(func(txn *badger.Txn) error {
-		out = update(&badgerStringTxn{txn: txn})
+	_ = ss.db.Update(func(txn *badger.Txn) error {
+		out = update(&badgerStringTxn{
+			prefix: ss.prefix,
+			txn:    txn,
+		})
 		return nil
 	})
 	return out
 }
 
 type badgerStringTxn struct {
-	txn *badger.Txn
+	prefix string
+	txn    *badger.Txn
 }
 
-func (b *badgerStringTxn) Get(k string) (v string, ok bool) {
-	i, err := b.txn.Get([]byte(k))
+func (t *badgerStringTxn) Get(k string) (v string, ok bool) {
+	k = fmt.Sprintf("%s/%s", t.prefix, k)
+
+	i, err := t.txn.Get([]byte(k))
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return "", false
 	}
@@ -66,15 +72,19 @@ func (b *badgerStringTxn) Get(k string) (v string, ok bool) {
 	return v, true
 }
 
-func (b *badgerStringTxn) Set(k string, v string) {
-	err := b.txn.Set([]byte(k), []byte(v))
+func (t *badgerStringTxn) Set(k string, v string) {
+	k = fmt.Sprintf("%s/%s", t.prefix, k)
+
+	err := t.txn.Set([]byte(k), []byte(v))
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (b *badgerStringTxn) Del(k string) {
-	err := b.txn.Delete([]byte(k))
+func (t *badgerStringTxn) Del(k string) {
+	k = fmt.Sprintf("%s/%s", t.prefix, k)
+
+	err := t.txn.Delete([]byte(k))
 	if err != nil {
 		panic(err)
 	}

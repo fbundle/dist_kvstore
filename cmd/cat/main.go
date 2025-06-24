@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/dgraph-io/badger/v4"
 	"os"
-	"strconv"
 )
 
 func main() {
@@ -17,7 +16,7 @@ func main() {
 			}
 			defer db.Close()
 
-			log := make(map[int]string)
+			data := make(map[string]string)
 			err = db.View(func(txn *badger.Txn) error {
 				opts := badger.DefaultIteratorOptions
 				it := txn.NewIterator(opts)
@@ -26,13 +25,13 @@ func main() {
 					item := it.Item()
 					keyBytes := item.Key()
 					err := item.Value(func(valBytes []byte) error {
-						key, err := strconv.Atoi(string(keyBytes))
+						key := string(keyBytes)
 						if err != nil {
 							fmt.Println(err)
 							return nil
 						}
 						val := string(valBytes)
-						log[key] = val
+						data[key] = val
 						return nil
 					})
 					if err != nil {
@@ -44,16 +43,9 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			key := 0
-			for {
-				val, ok := log[key]
-				if !ok {
-					_, _ = fmt.Fprintf(os.Stderr, "stopped with %d keys left\n", len(log))
-					break
-				}
-				fmt.Printf("%d: %s\n", key, val)
-				delete(log, key)
-				key++
+
+			for k, v := range data {
+				_, _ = fmt.Fprintf(os.Stdout, "%s -> %s\n", k, v)
 			}
 		}(badgerPath)
 	}
