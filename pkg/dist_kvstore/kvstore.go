@@ -45,8 +45,8 @@ type store struct {
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
 	writeMu      sync.Mutex
-	updateCtx    context.Context
-	updateCancel context.CancelFunc
+	serveCtx     context.Context
+	serveCancel  context.CancelFunc
 }
 
 func getDefaultEntry(txn kvstore.Txn[string, Entry], key string) Entry {
@@ -113,7 +113,7 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		}
 	}
 
-	updateCtx, updateCancel := context.WithCancel(context.Background())
+	serveCtx, serveCancel := context.WithCancel(context.Background())
 	return &store{
 		id:           paxos.ProposerId(id),
 		peerAddrList: peerAddrList,
@@ -123,13 +123,13 @@ func NewDistStore(id int, badgerPath string, peerAddrList []string) (Store, erro
 		server:       server,
 		rpcList:      rpcList,
 		writeMu:      sync.Mutex{},
-		updateCtx:    updateCtx,
-		updateCancel: updateCancel,
+		serveCtx:     serveCtx,
+		serveCancel:  serveCancel,
 	}, nil
 }
 
 func (ds *store) Close() error {
-	ds.updateCancel()
+	ds.serveCancel()
 	err1 := ds.db.Close()
 	err2 := ds.server.Close()
 	return combineErrors(err1, err2)
@@ -141,7 +141,7 @@ func (ds *store) ListenAndServeRPC() error {
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ds.updateCtx.Done():
+			case <-ds.serveCtx.Done():
 				return
 			case <-ticker.C:
 				paxos.Update(ds.acceptor, ds.rpcList)
