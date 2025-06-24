@@ -12,7 +12,7 @@ import (
 
 const (
 	TCP_TIMEOUT = 10 * time.Second
-	AES_KEY_ENV = "AES_KEY"
+	RPC_KEY_ENV = "DIST_KVSTORE_RPC_KEY"
 )
 
 type TCPServer interface {
@@ -23,7 +23,7 @@ type TCPServer interface {
 }
 
 func getKey() crypt.CryptStream {
-	keyStr := os.Getenv(AES_KEY_ENV)
+	keyStr := os.Getenv(RPC_KEY_ENV)
 	key := crypt.NewStream(crypt.NewCrypt(keyStr))
 	return key
 }
