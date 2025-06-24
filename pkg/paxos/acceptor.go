@@ -2,8 +2,6 @@ package paxos
 
 import (
 	"sync"
-
-	"github.com/khanh101/paxos/pkg/kvstore"
 )
 
 type StateMachine[T any] func(logId LogId, value T)
@@ -21,7 +19,7 @@ type Acceptor[T any] interface {
 	Subscribe(smallestUnapplied LogId, sm StateMachine[T]) (cancel func())
 }
 
-func NewAcceptor[T any](log kvstore.Store[LogId, Promise[T]]) Acceptor[T] {
+func NewAcceptor[T any](log Log[T]) Acceptor[T] {
 	return (&acceptor[T]{
 		mu:                sync.Mutex{},
 		acceptor:          &simpleAcceptor[T]{log: log},
