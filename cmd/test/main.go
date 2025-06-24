@@ -13,8 +13,6 @@ func testRPC() {
 		Values []int
 	}
 
-	type AddRes = int
-
 	type SubReq struct {
 		A int
 		B int
@@ -26,7 +24,7 @@ func testRPC() {
 
 	d := rpc.NewDispatcher()
 
-	d.Register("add", func(req *AddReq) (res *AddRes) {
+	d.Register("add", func(req *AddReq) (res *int) {
 		sum := 0
 		for _, v := range req.Values {
 			sum += v
@@ -40,7 +38,7 @@ func testRPC() {
 
 	localTransport := d.Handle
 	{
-		res, err := rpc.RPC[AddReq, AddRes](
+		res, err := rpc.RPC[AddReq, int](
 			localTransport,
 			"add",
 			&AddReq{Values: []int{1, 2, 3}},
