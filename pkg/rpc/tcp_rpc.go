@@ -17,8 +17,8 @@ const (
 
 type TCPServer interface {
 	Handle(input []byte) (output []byte, err error)
-	ListenAndServe() error
 	Register(cmd string, h any) TCPServer
+	ListenAndServe() error
 	Close() error
 }
 
