@@ -12,26 +12,16 @@ type Dispatcher interface {
 }
 
 func NewDispatcher() Dispatcher {
-	return &dispatcher{
-		handlerMap: make(map[string]handler),
-	}
-}
-
-type message struct {
-	Cmd  string `json:"cmd"`
-	Body []byte `json:"body"`
+	return dispatcher(make(map[string]handler))
 }
 
 type handler struct {
 	handlerFunc reflect.Value
 	argType     reflect.Type
 }
+type dispatcher map[string]handler
 
-type dispatcher struct {
-	handlerMap map[string]handler
-}
-
-func (d *dispatcher) Register(cmd string, h any) Dispatcher {
+func (d dispatcher) Register(cmd string, h any) Dispatcher {
 	handlerFunc := reflect.ValueOf(h)
 	handlerFuncType := handlerFunc.Type()
 	if handlerFuncType.Kind() != reflect.Func || handlerFuncType.NumIn() != 1 || handlerFuncType.NumOut() != 1 {
@@ -42,20 +32,25 @@ func (d *dispatcher) Register(cmd string, h any) Dispatcher {
 	if argType.Kind() != reflect.Ptr || outType.Kind() != reflect.Ptr {
 		panic("handler arguments and return type must be pointers")
 	}
-	d.handlerMap[cmd] = handler{
+	d[cmd] = handler{
 		handlerFunc: handlerFunc,
 		argType:     argType,
 	}
 	return d
 }
 
-func (d *dispatcher) Handle(input []byte) (output []byte, err error) {
+type message struct {
+	Cmd  string `json:"cmd"`
+	Body []byte `json:"body"`
+}
+
+func (d dispatcher) Handle(input []byte) (output []byte, err error) {
 	msg := message{}
 	if err := json.Unmarshal(input, &msg); err != nil {
 		return nil, err
 	}
 
-	h, ok := d.handlerMap[msg.Cmd]
+	h, ok := d[msg.Cmd]
 	if !ok {
 		return nil, fmt.Errorf("command not found")
 	}
