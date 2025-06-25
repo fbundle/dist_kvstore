@@ -7,7 +7,7 @@ import (
 )
 
 type Dispatcher interface {
-	Register(name string, h any) Dispatcher
+	Register(cmd string, h any) Dispatcher
 	Handle(input []byte) (output []byte, err error)
 }
 
@@ -31,7 +31,7 @@ type dispatcher struct {
 	handlerMap map[string]handler
 }
 
-func (d *dispatcher) Register(name string, h any) Dispatcher {
+func (d *dispatcher) Register(cmd string, h any) Dispatcher {
 	handlerFunc := reflect.ValueOf(h)
 	handlerFuncType := handlerFunc.Type()
 	if handlerFuncType.Kind() != reflect.Func || handlerFuncType.NumIn() != 1 || handlerFuncType.NumOut() != 1 {
@@ -41,7 +41,7 @@ func (d *dispatcher) Register(name string, h any) Dispatcher {
 	if argType.Kind() != reflect.Ptr || handlerFuncType.Out(0).Kind() != reflect.Ptr {
 		panic("handler arguments and return type must be pointers")
 	}
-	d.handlerMap[name] = handler{
+	d.handlerMap[cmd] = handler{
 		handlerFunc: handlerFunc,
 		argType:     argType,
 	}
