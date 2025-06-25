@@ -11,13 +11,13 @@ func zeroPtr[T any]() *T {
 	return &v
 }
 
-func RPC[Req any, Res any](transport TransportFunc, name string, req *Req) (res *Res, err error) {
+func MakeRPC[Req any, Res any](transport TransportFunc, cmd string, req *Req) (res *Res, err error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
 	msg := message{
-		Cmd:  name,
+		Cmd:  cmd,
 		Body: body,
 	}
 	b, err := json.Marshal(msg)

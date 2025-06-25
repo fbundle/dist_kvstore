@@ -93,15 +93,15 @@ func NewStore(id int, badgerPath string, peerAddrList []string) (DistStore, erro
 			rpcList[i] = func(req paxos.Request, resCh chan<- paxos.Response) {
 				transport := rpc.TCPTransport(peerAddrList[i])
 				res, err := func() (paxos.Response, error) {
-					switch req.(type) {
+					switch req := req.(type) {
 					case *paxos.PrepareRequest:
-						return rpc.RPC[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](transport, "prepare", req.(*paxos.PrepareRequest))
+						return rpc.MakeRPC[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](transport, "prepare", req)
 					case *paxos.AcceptRequest[Cmd]:
-						return rpc.RPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse[Cmd]](transport, "accept", req.(*paxos.AcceptRequest[Cmd]))
+						return rpc.MakeRPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse[Cmd]](transport, "accept", req)
 					case *paxos.CommitRequest[Cmd]:
-						return rpc.RPC[paxos.CommitRequest[Cmd], paxos.CommitResponse](transport, "commit", req.(*paxos.CommitRequest[Cmd]))
+						return rpc.MakeRPC[paxos.CommitRequest[Cmd], paxos.CommitResponse](transport, "commit", req)
 					case *paxos.PollRequest:
-						return rpc.RPC[paxos.PollRequest, paxos.PollResponse[Cmd]](transport, "poll", req.(*paxos.PollRequest))
+						return rpc.MakeRPC[paxos.PollRequest, paxos.PollResponse[Cmd]](transport, "poll", req)
 					default:
 						return nil, nil
 					}
