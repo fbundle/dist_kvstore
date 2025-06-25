@@ -18,7 +18,7 @@ const (
 type TCPServer interface {
 	Handle(input []byte) (output []byte, err error)
 	ListenAndServe() error
-	Register(name string, h any) TCPServer
+	Register(cmd string, h any) TCPServer
 	Close() error
 }
 
@@ -90,10 +90,10 @@ func (s *tcpServer) Handle(input []byte) (output []byte, err error) {
 	return s.dispatcher.Handle(input)
 }
 
-func (s *tcpServer) Register(name string, h any) TCPServer {
+func (s *tcpServer) Register(cmd string, h any) TCPServer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.dispatcher.Register(name, h)
+	s.dispatcher.Register(cmd, h)
 	return s
 }
 
