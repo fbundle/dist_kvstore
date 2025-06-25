@@ -42,6 +42,7 @@ type store struct {
 	db           *badger.DB
 	memStore     *stateMachine
 	acceptor     paxos.Acceptor[Cmd]
+	dispatcher   rpc.Dispatcher
 	server       rpc.TCPServer
 	rpcList      []paxos.RPC
 	writeMu      sync.Mutex
@@ -72,15 +73,16 @@ func NewStore(id int, badgerPath string, peerAddrList []string) (DistStore, erro
 	memStore := newStateMachine()
 	acceptor.Subscribe(0, memStore.Apply)
 
-	server, err := rpc.NewTCPServer(bindAddr)
-	if err != nil {
-		return nil, err
-	}
-	server = server.
+	dispatcher := rpc.NewDispatcher().
 		Register("prepare", makeHandlerFunc[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](acceptor)).
 		Register("accept", makeHandlerFunc[paxos.AcceptRequest[Cmd], paxos.AcceptResponse[Cmd]](acceptor)).
 		Register("commit", makeHandlerFunc[paxos.CommitRequest[Cmd], paxos.CommitResponse](acceptor)).
 		Register("poll", makeHandlerFunc[paxos.PollRequest, paxos.PollResponse[Cmd]](acceptor))
+
+	server, err := rpc.NewTCPServer(bindAddr)
+	if err != nil {
+		return nil, err
+	}
 
 	rpcList := make([]paxos.RPC, len(peerAddrList))
 	for i := range peerAddrList {
@@ -121,6 +123,7 @@ func NewStore(id int, badgerPath string, peerAddrList []string) (DistStore, erro
 		db:           db,
 		memStore:     memStore,
 		acceptor:     acceptor,
+		dispatcher:   dispatcher,
 		server:       server,
 		rpcList:      rpcList,
 		writeMu:      sync.Mutex{},
@@ -150,7 +153,7 @@ func (ds *store) ListenAndServeRPC() error {
 		}
 
 	}()
-	return ds.server.ListenAndServe()
+	return ds.server.ListenAndServe(ds.dispatcher)
 }
 
 func (ds *store) Set(cmd Cmd) {

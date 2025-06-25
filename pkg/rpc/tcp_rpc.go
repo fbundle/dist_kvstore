@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/khanh101/paxos/pkg/crypt"
@@ -16,9 +15,7 @@ const (
 )
 
 type TCPServer interface {
-	Handle(input []byte) (output []byte, err error)
-	ListenAndServe() error
-	Register(cmd string, h any) TCPServer
+	ListenAndServe(dispatcher Dispatcher) error
 	Close() error
 }
 
@@ -63,7 +60,6 @@ func TCPTransport(addr string) TransportFunc {
 }
 
 type tcpServer struct {
-	mu         sync.Mutex
 	dispatcher Dispatcher
 	listener   net.Listener
 	key        crypt.CryptStream
@@ -75,8 +71,7 @@ func NewTCPServer(bindAddr string) (TCPServer, error) {
 		return nil, err
 	}
 	return &tcpServer{
-		mu:         sync.Mutex{},
-		dispatcher: NewDispatcher(),
+		dispatcher: nil,
 		listener:   listener,
 		key:        getKey(),
 	}, nil
@@ -84,17 +79,6 @@ func NewTCPServer(bindAddr string) (TCPServer, error) {
 
 func (s *tcpServer) Close() error {
 	return s.listener.Close()
-}
-
-func (s *tcpServer) Handle(input []byte) (output []byte, err error) {
-	return s.dispatcher.Handle(input)
-}
-
-func (s *tcpServer) Register(cmd string, h any) TCPServer {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.dispatcher.Register(cmd, h)
-	return s
 }
 
 func (s *tcpServer) handleConn(conn net.Conn) {
@@ -112,14 +96,10 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 		return
 	}
 
-	{
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		b, err = s.dispatcher.Handle(b)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
+	b, err = s.dispatcher.Handle(b)
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
 
 	err = key.EncryptToWriter(b, conn)
@@ -129,7 +109,8 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 	}
 }
 
-func (s *tcpServer) ListenAndServe() error {
+func (s *tcpServer) ListenAndServe(dispatcher Dispatcher) error {
+	s.dispatcher = dispatcher
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
