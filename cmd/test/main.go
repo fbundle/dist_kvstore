@@ -38,7 +38,7 @@ func testRPC() {
 
 	localTransport := d.Handle
 	{
-		res, err := rpc.MakeRPC[AddReq, int](
+		res, err := rpc.RPC[AddReq, int](
 			localTransport,
 			"add",
 			&AddReq{Values: []int{1, 2, 3}},
@@ -49,7 +49,7 @@ func testRPC() {
 		fmt.Println(*res)
 	}
 	{
-		res, err := rpc.MakeRPC[SubReq, SubRes](
+		res, err := rpc.RPC[SubReq, SubRes](
 			localTransport,
 			"sub",
 			&SubReq{A: 20, B: 16},
@@ -104,7 +104,7 @@ func testRPCTCP() {
 
 	transport := rpc.TCPTransport(addr)
 	{
-		res, err := rpc.MakeRPC[AddReq, AddRes](
+		res, err := rpc.RPC[AddReq, AddRes](
 			transport,
 			"add",
 			&AddReq{Values: []int{1, 2, 3}},
@@ -115,7 +115,7 @@ func testRPCTCP() {
 		fmt.Println(res)
 	}
 	{
-		res, err := rpc.MakeRPC[SubReq, SubRes](
+		res, err := rpc.RPC[SubReq, SubRes](
 			transport,
 			"sub",
 			&SubReq{A: 20, B: 16},

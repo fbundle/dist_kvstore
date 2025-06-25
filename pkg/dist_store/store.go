@@ -95,13 +95,13 @@ func NewStore(id int, badgerPath string, peerAddrList []string) (DistStore, erro
 				res, err := func() (paxos.Response, error) {
 					switch req := req.(type) {
 					case *paxos.PrepareRequest:
-						return rpc.MakeRPC[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](transport, "prepare", req)
+						return rpc.RPC[paxos.PrepareRequest, paxos.PrepareResponse[Cmd]](transport, "prepare", req)
 					case *paxos.AcceptRequest[Cmd]:
-						return rpc.MakeRPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse[Cmd]](transport, "accept", req)
+						return rpc.RPC[paxos.AcceptRequest[Cmd], paxos.AcceptResponse[Cmd]](transport, "accept", req)
 					case *paxos.CommitRequest[Cmd]:
-						return rpc.MakeRPC[paxos.CommitRequest[Cmd], paxos.CommitResponse](transport, "commit", req)
+						return rpc.RPC[paxos.CommitRequest[Cmd], paxos.CommitResponse](transport, "commit", req)
 					case *paxos.PollRequest:
-						return rpc.MakeRPC[paxos.PollRequest, paxos.PollResponse[Cmd]](transport, "poll", req)
+						return rpc.RPC[paxos.PollRequest, paxos.PollResponse[Cmd]](transport, "poll", req)
 					default:
 						return nil, nil
 					}
