@@ -46,7 +46,7 @@ type message struct {
 
 func (d dispatcher) Handle(input []byte) (output []byte, err error) {
 	msg := message{}
-	if err := json.Unmarshal(input, &msg); err != nil {
+	if err = json.Unmarshal(input, &msg); err != nil {
 		return nil, err
 	}
 
@@ -56,7 +56,7 @@ func (d dispatcher) Handle(input []byte) (output []byte, err error) {
 	}
 
 	argPtr := reflect.New(h.argType.Elem()).Interface()
-	if err := json.Unmarshal(msg.Body, argPtr); err != nil {
+	if err = json.Unmarshal(msg.Body, argPtr); err != nil {
 		return nil, err
 	}
 
