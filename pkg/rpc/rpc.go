@@ -38,7 +38,8 @@ func (d *dispatcher) Register(cmd string, h any) Dispatcher {
 		panic("handler must be of form func(*SomeRequest) *SomeResponse")
 	}
 	argType := handlerFuncType.In(0)
-	if argType.Kind() != reflect.Ptr || handlerFuncType.Out(0).Kind() != reflect.Ptr {
+	outType := handlerFuncType.Out(0)
+	if argType.Kind() != reflect.Ptr || outType.Kind() != reflect.Ptr {
 		panic("handler arguments and return type must be pointers")
 	}
 	d.handlerMap[cmd] = handler{
