@@ -30,7 +30,7 @@ func RPC[Req any, Res any](transport TransportFunc, cmd string, req *Req) (res *
 	}
 
 	res = zeroPtr[Res]()
-	if err := json.Unmarshal(b, res); err != nil {
+	if err = json.Unmarshal(b, res); err != nil {
 		return nil, err
 	}
 	return res, nil
