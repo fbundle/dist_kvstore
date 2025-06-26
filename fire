@@ -126,8 +126,18 @@ def get_python_version():
 __version__ = "0.1.0"
 
 if __name__ == "__main__":
-    if not get_python_version().startswith("3.12."):
-        print("WARNING: This script is only tested with python 3.12.")
+    tested_python_version = [
+        "3.12.",
+        "3.13.",
+    ]
+    tested = False
+    for python_version in tested_python_version:
+        if get_python_version().startswith(python_version):
+            tested = True
+            break
+
+    if not tested:
+        print(f"WARNING: This script is only tested with python {tested_python_version}")
 
     with open("fire.json", "r") as f:
         config = FireConfig(**json.loads(f.read())).post_init()
