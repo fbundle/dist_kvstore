@@ -19,9 +19,9 @@ type TCPServer interface {
 	Close() error
 }
 
-func getKey() crypt.CryptStream {
+func getKey() IO {
 	keyStr := os.Getenv(RPC_KEY_ENV)
-	key := crypt.NewStream(crypt.NewCrypt(keyStr))
+	key := NewCryptIO(crypt.NewCrypt(keyStr))
 	return key
 }
 
@@ -43,13 +43,13 @@ func TCPTransport(addr string) TransportFunc {
 			return nil, err
 		}
 
-		err = key.EncryptToWriter(b, conn)
+		err = key.Write(b, conn)
 		if err != nil {
 			fmt.Println(err)
 			return nil, err
 		}
 
-		b, err = key.DecryptFromReader(conn)
+		b, err = key.Read(conn)
 		if err != nil {
 			fmt.Println(err)
 			return nil, err
@@ -62,7 +62,7 @@ func TCPTransport(addr string) TransportFunc {
 type tcpServer struct {
 	dispatcher Dispatcher
 	listener   net.Listener
-	key        crypt.CryptStream
+	key        IO
 }
 
 func NewTCPServer(bindAddr string) (TCPServer, error) {
@@ -90,7 +90,7 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 		return
 	}
 
-	b, err := key.DecryptFromReader(conn)
+	b, err := key.Read(conn)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -102,7 +102,7 @@ func (s *tcpServer) handleConn(conn net.Conn) {
 		return
 	}
 
-	err = key.EncryptToWriter(b, conn)
+	err = key.Write(b, conn)
 	if err != nil {
 		fmt.Println(err)
 		return
