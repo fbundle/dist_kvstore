@@ -51,7 +51,7 @@ ssh {user}@{host} << EOF
     set -xe
     {tmux_bin} has-session -t {tmux_session} 2> /dev/null && {tmux_bin} kill-session -t {tmux_session}
     cd {deploy_dir}/{app_name}
-    {tmux_bin} new-session -s {tmux_session} -d "export {env_str}; {exec} {deploy_dir}/{app_name}.json {i} |& tee {deploy_dir}/run.log"
+    {tmux_bin} new-session -s {tmux_session} -d "export {env_str}; {exec} |& tee {deploy_dir}/run.log"
 EOF
 """
 
@@ -68,7 +68,10 @@ def make_run_script(fire: FireConfig) -> str:
             deploy_dir=host_config.deploy_dir,
             tmux_bin=host_config.tmux_bin,
             tmux_session=host_config.tmux_session,
-            exec=host_config.exec,
+            exec=host_config.exec.format(
+                host_id=i,
+                config_path=f"{host_config.deploy_dir}/{fire.app_name}.json",
+            ),
             env_str=env_str,
             i=i,
         )
