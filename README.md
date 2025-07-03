@@ -4,9 +4,9 @@ implementation of distributed kvstore using paxos
 
 paxos is easier to understand and prove unlike raft
 
-[proof](https://github.com/khanh101/dist_kvstore/blob/master/docs/paxos.pdf)
+[proof](https://github.com/fbundle/dist_kvstore/blob/master/docs/paxos.pdf)
 
-[pkg.go.dev](https://pkg.go.dev/github.com/khanh101/paxos)
+[pkg.go.dev](https://pkg.go.dev/github.com/fbundle/paxos)
 
 ## EXAMPLE
 
