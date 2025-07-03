@@ -1,6 +1,6 @@
 package paxos
 
-import "github.com/khanh101/paxos/pkg/local_store"
+import "github.com/fbundle/paxos/pkg/local_store"
 
 // Proposal - roundId * 4294967296 + nodeId
 type Proposal uint64

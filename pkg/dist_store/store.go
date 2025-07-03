@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/khanh101/paxos/pkg/local_store"
-	"github.com/khanh101/paxos/pkg/paxos"
-	"github.com/khanh101/paxos/pkg/rpc"
+	"github.com/fbundle/paxos/pkg/local_store"
+	"github.com/fbundle/paxos/pkg/paxos"
+	"github.com/fbundle/paxos/pkg/rpc"
 )
 
 const (

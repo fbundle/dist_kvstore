@@ -8,9 +8,9 @@ import (
 type ProposerId uint64
 
 const (
-	PROPOSAL_STEP                  = 4294967296
-	BACKOFF_MIN_TIME time.Duration = 10 * time.Millisecond
-	BACKOFF_MAX_TIME time.Duration = 1000 * time.Millisecond
+	PROPOSAL_STEP    = 4294967296
+	BACKOFF_MIN_TIME = 10 * time.Millisecond
+	BACKOFF_MAX_TIME = 1000 * time.Millisecond
 )
 
 type Round uint64

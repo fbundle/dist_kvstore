@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/khanh101/paxos/pkg/crypt"
+	"github.com/fbundle/paxos/pkg/crypt"
 )
 
 type IO interface {

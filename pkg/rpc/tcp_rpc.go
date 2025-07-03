@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/khanh101/paxos/pkg/crypt"
+	"github.com/fbundle/paxos/pkg/crypt"
 )
 
 const (

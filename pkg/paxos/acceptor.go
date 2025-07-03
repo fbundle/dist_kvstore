@@ -1,7 +1,7 @@
 package paxos
 
 import (
-	"github.com/khanh101/paxos/pkg/local_store"
+	"github.com/fbundle/paxos/pkg/local_store"
 	"sync"
 )
 

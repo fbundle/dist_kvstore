@@ -4,8 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/khanh101/paxos/pkg/crypt"
-	"github.com/khanh101/paxos/pkg/rpc"
+	"github.com/fbundle/paxos/pkg/crypt"
+	"github.com/fbundle/paxos/pkg/rpc"
 )
 
 func testRPC() {

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/khanh101/paxos/pkg/dist_store"
+	"github.com/fbundle/paxos/pkg/dist_store"
 )
 
 type HostConfig struct {

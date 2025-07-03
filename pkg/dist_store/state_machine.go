@@ -1,9 +1,9 @@
 package dist_store
 
 import (
+	"github.com/fbundle/paxos/pkg/local_store"
+	"github.com/fbundle/paxos/pkg/paxos"
 	"github.com/google/uuid"
-	"github.com/khanh101/paxos/pkg/local_store"
-	"github.com/khanh101/paxos/pkg/paxos"
 )
 
 type Entry struct {
