@@ -34,7 +34,8 @@ curl http://localhost:4000/kvstore/<key> -X PUT -d '{"val": "", "ver": <ver>}'
 - rewrite `fire`, it will works like a build system, user can do something like
 
 ```python
-Process(host="host1", tmux="/usr/bin/tmux").copy("path/to/app").exec("./run {config} {node_id}").commit()
+script = Script(name="run")
+Process(host="host1", tmux="/usr/bin/tmux").copy("path/to/app").exec("./run {config} {node_id}").commit(script)
 ```
 
 - implement log compaction (3/5 difficulty, 4/5 complexity)
