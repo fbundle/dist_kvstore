@@ -4,8 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/fbundle/go_util/pkg/crypt"
-	"github.com/fbundle/paxos/pkg/rpc"
+	"dist_kvstore/pkg/crypt"
+	"dist_kvstore/pkg/rpc"
 )
 
 func testRPC() {
