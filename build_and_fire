@@ -17,4 +17,4 @@ GOOS=darwin GOARCH=arm64 go build -o bin/dist_kvstore/run_darwin_arm64 cmd/dist_
 wait
 
 # fire
-./fire $@
+python fire_script.py $@
