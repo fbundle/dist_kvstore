@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/fbundle/go_util/pkg/crypt"
+	"dist_kvstore/pkg/crypt"
 )
 
 type IO interface {

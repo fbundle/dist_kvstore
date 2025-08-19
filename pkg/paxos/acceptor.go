@@ -1,8 +1,9 @@
 package paxos
 
 import (
-	"github.com/fbundle/paxos/pkg/local_store"
 	"sync"
+
+	"dist_kvstore/pkg/local_store"
 )
 
 type StateMachine[T any] func(logId LogId, value T)

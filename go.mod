@@ -1,10 +1,9 @@
-module github.com/fbundle/paxos
+module dist_kvstore
 
 go 1.24.5
 
 require (
 	github.com/dgraph-io/badger/v4 v4.7.0
-	github.com/fbundle/go_util v0.0.0-20250819042423-6db0998ff965
 	github.com/google/uuid v1.6.0
 )
 

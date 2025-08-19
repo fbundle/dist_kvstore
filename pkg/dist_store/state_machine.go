@@ -1,8 +1,10 @@
 package dist_store
 
 import (
-	"github.com/fbundle/paxos/pkg/local_store"
-	"github.com/fbundle/paxos/pkg/paxos"
+	"dist_kvstore/pkg/local_store"
+
+	"dist_kvstore/pkg/paxos"
+
 	"github.com/google/uuid"
 )
 

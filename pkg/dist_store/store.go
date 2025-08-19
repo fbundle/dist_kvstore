@@ -6,10 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"dist_kvstore/pkg/local_store"
+	"dist_kvstore/pkg/paxos"
+	"dist_kvstore/pkg/rpc"
+
 	"github.com/dgraph-io/badger/v4"
-	"github.com/fbundle/paxos/pkg/local_store"
-	"github.com/fbundle/paxos/pkg/paxos"
-	"github.com/fbundle/paxos/pkg/rpc"
 )
 
 const (

@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/fbundle/go_util/pkg/crypt"
+	"dist_kvstore/pkg/crypt"
 )
 
 const (

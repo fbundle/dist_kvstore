@@ -1,14 +1,13 @@
 package main
 
 import (
+	"dist_kvstore/pkg/dist_store"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/fbundle/paxos/pkg/dist_store"
 )
 
 type HostConfig struct {
