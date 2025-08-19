@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/fbundle/paxos/pkg/crypt"
+	"github.com/fbundle/go_util/pkg/crypt"
 	"github.com/fbundle/paxos/pkg/rpc"
 )
 
