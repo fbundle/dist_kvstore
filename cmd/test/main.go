@@ -86,7 +86,7 @@ func testRPCTCP() {
 	}
 	defer s.Close()
 
-	s.Register("add", func(req *AddReq) (res *AddRes) {
+	d := rpc.NewDispatcher().Register("add", func(req *AddReq) (res *AddRes) {
 		sum := 0
 		for _, v := range req.Values {
 			sum += v
@@ -100,7 +100,7 @@ func testRPCTCP() {
 		}
 	})
 
-	go s.ListenAndServe()
+	go s.ListenAndServe(d)
 
 	transport := rpc.TCPTransport(addr)
 	{
